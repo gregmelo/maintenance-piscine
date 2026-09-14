@@ -3,20 +3,17 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
-  base: './', // Très important pour GitHub Pages
+  base: '/maintenance-piscine/',
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
         name: 'Maintenance Piscine Ambérieu',
-        short_name: 'Piscine Suivi',
-        description: 'Suivi de maintenance préventive du centre nautique',
+        short_name: 'Piscine',
+        description: 'Suivi de maintenance préventive',
         theme_color: '#0284c7',
-        background_color: '#0f172a',
-        display: 'standalone',
-        orientation: 'portrait',
         icons: [
           {
             src: 'pwa-192x192.png',
