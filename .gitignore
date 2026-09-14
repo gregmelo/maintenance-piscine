@@ -1,0 +1,15 @@
+# Dépendances et caches
+node_modules/
+vendor/
+.env.local
+.env.*.local
+
+# Builds
+dist/
+var/
+*.db
+*.sqlite
+
+# IDE
+.vscode/
+.idea/
