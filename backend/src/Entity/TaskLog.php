@@ -37,23 +37,91 @@ class TaskLog
     #[ORM\Column]
     private \DateTimeImmutable $updatedAt;
 
-    public function __construct() {
+    #[ORM\Column(type: 'datetime_immutable', nullable: true)]
+    private ?\DateTimeImmutable $completedAt = null;
+
+    public function __construct()
+    {
         $this->updatedAt = new \DateTimeImmutable();
     }
 
-    public function getId(): ?int { return $this->id; }
-    public function getTask(): ?MaintenanceTask { return $this->task; }
-    public function setTask(?MaintenanceTask $task): self { $this->task = $task; return $this; }
-    public function getYear(): int { return $this->year; }
-    public function setYear(int $year): self { $this->year = $year; return $this; }
-    public function getMonth(): int { return $this->month; }
-    public function setMonth(int $month): self { $this->month = $month; return $this; }
-    public function getStatus(): string { return $this->status; }
-    public function setStatus(string $status): self { $this->status = $status; return $this; }
-    public function getObservation(): ?string { return $this->observation; }
-    public function setObservation(?string $observation): self { $this->observation = $observation; return $this; }
-    public function getUpdatedBy(): ?string { return $this->updatedBy; }
-    public function setUpdatedBy(?string $updatedBy): self { $this->updatedBy = $updatedBy; return $this; }
-    public function getUpdatedAt(): \DateTimeImmutable { return $this->updatedAt; }
-    public function setUpdatedAt(\DateTimeImmutable $updatedAt): self { $this->updatedAt = $updatedAt; return $this; }
+    public function getId(): ?int
+    {
+        return $this->id;
+    }
+    public function getTask(): ?MaintenanceTask
+    {
+        return $this->task;
+    }
+    public function setTask(?MaintenanceTask $task): self
+    {
+        $this->task = $task;
+        return $this;
+    }
+    public function getYear(): int
+    {
+        return $this->year;
+    }
+    public function setYear(int $year): self
+    {
+        $this->year = $year;
+        return $this;
+    }
+    public function getMonth(): int
+    {
+        return $this->month;
+    }
+    public function setMonth(int $month): self
+    {
+        $this->month = $month;
+        return $this;
+    }
+    public function getStatus(): string
+    {
+        return $this->status;
+    }
+    public function setStatus(string $status): self
+    {
+        $this->status = $status;
+        return $this;
+    }
+    public function getObservation(): ?string
+    {
+        return $this->observation;
+    }
+    public function setObservation(?string $observation): self
+    {
+        $this->observation = $observation;
+        return $this;
+    }
+    public function getUpdatedBy(): ?string
+    {
+        return $this->updatedBy;
+    }
+    public function setUpdatedBy(?string $updatedBy): self
+    {
+        $this->updatedBy = $updatedBy;
+        return $this;
+    }
+    public function getUpdatedAt(): \DateTimeImmutable
+    {
+        return $this->updatedAt;
+    }
+    public function setUpdatedAt(\DateTimeImmutable $updatedAt): self
+    {
+        $this->updatedAt = $updatedAt;
+        return $this;
+    }
+
+    public function getCompletedAt(): ?\DateTimeImmutable
+    {
+        return $this->completedAt;
+    }
+
+    public function setCompletedAt(?\DateTimeImmutable $completedAt): static
+    {
+        $this->completedAt = $completedAt;
+
+        return $this;
+    }
 }

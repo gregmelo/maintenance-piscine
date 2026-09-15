@@ -52,7 +52,7 @@ class ApiController extends AbstractController
             $interval = $task->getIntervalMonths();
             $start = $task->getStartMonth();
 
-            // Formule mathématiquement robuste pour le modulo positif
+            // Formule pour le modulo positif
             $isDue = ((($month - $start) % $interval) + $interval) % $interval === 0;
 
             $currentLog = $logMap[$task->getId()] ?? null;
@@ -67,6 +67,7 @@ class ApiController extends AbstractController
                 'observation' => $currentLog ? $currentLog->getObservation() : '',
                 'updatedBy' => $currentLog ? $currentLog->getUpdatedBy() : null,
                 'updatedAt' => $currentLog ? $currentLog->getUpdatedAt()->format(\DateTimeInterface::ATOM) : null,
+                'completedAt' => $currentLog?->getCompletedAt()?->format(\DateTimeInterface::ATOM),
             ];
         }
 
@@ -108,6 +109,21 @@ class ApiController extends AbstractController
             $log->setObservation($item['observation'] ?? null);
             $log->setUpdatedBy($item['updatedBy'] ?? 'Agent');
             $log->setUpdatedAt(new \DateTimeImmutable());
+
+            // Gestion de la date de réalisation
+            if (in_array($item['status'], ['FAIT', 'RESERVE'])) {
+                if (!empty($item['completedAt'])) {
+                    try {
+                        $log->setCompletedAt(new \DateTimeImmutable($item['completedAt']));
+                    } catch (\Exception) {
+                        $log->setCompletedAt(new \DateTimeImmutable());
+                    }
+                } elseif ($log->getCompletedAt() === null) {
+                    $log->setCompletedAt(new \DateTimeImmutable());
+                }
+            } else {
+                $log->setCompletedAt(null);
+            }
         }
 
         $em->flush();
