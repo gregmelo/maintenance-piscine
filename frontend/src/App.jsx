@@ -33,6 +33,26 @@ const MONTH_NAMES = [
   "Décembre",
 ];
 
+// Helper pour formater la date/heure en français
+function formatCompletedAt(isoString) {
+  if (!isoString) return "";
+  try {
+    const d = new Date(isoString);
+    const dateStr = d.toLocaleDateString("fr-FR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+    const timeStr = d.toLocaleTimeString("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    return `le ${dateStr} à ${timeStr}`;
+  } catch {
+    return "";
+  }
+}
+
 export default function App() {
   const currentDate = new Date();
   const [selectedMonth, setSelectedMonth] = useState(
@@ -54,7 +74,8 @@ export default function App() {
   const [keyInput, setKeyInput] = useState(() => getApiKey());
   const [showSettings, setShowSettings] = useState(false);
 
-  useEffect(() => {
+
+useEffect(() => {
     let isMounted = true;
 
     async function loadData() {
@@ -66,12 +87,12 @@ export default function App() {
       if (!isMounted) return;
 
       setAuthError(err);
-      setTasks(data);
+      setTasks(data || []);
       setIsOnline(online);
 
       const cats = {};
       const initialNotes = {};
-      data.forEach((t) => {
+      (data || []).forEach((t) => {
         cats[t.category] = true;
         if (t.observation) {
           initialNotes[t.id] = t.observation;
@@ -112,18 +133,30 @@ export default function App() {
 
   const handleStatusChange = async (taskId, newStatus) => {
     const currentNote = notes[taskId] || "";
+    const isDoneOrReserve = newStatus === "FAIT" || newStatus === "RESERVE";
+    const completedAt = isDoneOrReserve ? new Date().toISOString() : null;
+    const operator = isDoneOrReserve ? user : null;
+
     await updateTaskStatus(
       taskId,
       selectedYear,
       selectedMonth,
       newStatus,
       currentNote,
-      user,
+      operator,
+      completedAt,
     );
+
     setTasks((prev) =>
       prev.map((t) =>
         t.id === taskId
-          ? { ...t, status: newStatus, observation: currentNote }
+          ? {
+              ...t,
+              status: newStatus,
+              observation: currentNote,
+              updatedBy: operator,
+              completedAt: completedAt,
+            }
           : t,
       ),
     );
@@ -142,6 +175,7 @@ export default function App() {
       task.status,
       noteText,
       user,
+      task.completedAt,
     );
     setTasks((prev) =>
       prev.map((t) => (t.id === task.id ? { ...t, observation: noteText } : t)),
@@ -155,21 +189,17 @@ export default function App() {
     window.location.reload();
   };
 
-  // Groupement par catégorie avec tri : les tâches dues en premier, les non-dues en dernier
+  // Groupement par catégorie avec tri : les tâches dues en premier
   const groupedTasks = tasks.reduce((acc, task) => {
     acc[task.category] = acc[task.category] || [];
     acc[task.category].push(task);
     return acc;
   }, {});
 
-  // Trier les tâches à l'intérieur de chaque catégorie
   Object.keys(groupedTasks).forEach((cat) => {
     groupedTasks[cat].sort((a, b) => {
-      // Si a est dû et b n'est pas dû, a passe avant
       if (a.isDue && !b.isDue) return -1;
-      // Si a n'est pas dû et b est dû, b passe avant
       if (!a.isDue && b.isDue) return 1;
-      // Sinon on conserve l'ordre d'origine
       return 0;
     });
   });
@@ -191,7 +221,6 @@ export default function App() {
         padding: "16px",
       }}
     >
-      {/* CONTENEUR PRINCIPAL RESPONSIVE (Mobile: 100%, Bureau: max 1100px centré) */}
       <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
         {/* EN-TÊTE */}
         <header
@@ -379,7 +408,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TABLEAU DE BORD (Sélecteur + Stats) */}
+        {/* TABLEAU DE BORD */}
         <div
           style={{
             backgroundColor: "#ffffff",
@@ -467,7 +496,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* CONTENEUR DES CATÉGORIES (1 colonne sur mobile, 2 colonnes sur grand écran) */}
+        {/* CATÉGORIES */}
         <div
           style={{
             display: "grid",
@@ -489,7 +518,6 @@ export default function App() {
                   border: "1px solid #e2e8f0",
                 }}
               >
-                {/* En-tête de catégorie pliable */}
                 <div
                   onClick={() => handleToggleCategory(category)}
                   style={{
@@ -529,7 +557,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Tâches de la catégorie */}
                 {isOpen && (
                   <div>
                     {items.map((task) => {
@@ -572,6 +599,7 @@ export default function App() {
                                   fontSize: "0.78rem",
                                   color: "#64748b",
                                   marginTop: "2px",
+                                  lineHeight: "1.4",
                                 }}
                               >
                                 <span>{task.frequency}</span>
@@ -585,11 +613,21 @@ export default function App() {
                                     • Non dû ce mois
                                   </span>
                                 )}
-                                {task.updatedBy && (
-                                  <span style={{ marginLeft: "6px" }}>
-                                    • Validé par {task.updatedBy}
-                                  </span>
-                                )}
+                                {task.status !== "A_FAIRE" &&
+                                  task.updatedBy && (
+                                    <span style={{ marginLeft: "6px" }}>
+                                      • Validé par{" "}
+                                      <strong style={{ color: "#334155" }}>
+                                        {task.updatedBy}
+                                      </strong>
+                                      {task.completedAt && (
+                                        <span style={{ color: "#0284c7" }}>
+                                          {" "}
+                                          {formatCompletedAt(task.completedAt)}
+                                        </span>
+                                      )}
+                                    </span>
+                                  )}
                               </div>
                             </div>
 
@@ -667,7 +705,10 @@ export default function App() {
                               </div>
                             ) : (
                               <span
-                                style={{ fontSize: "0.8rem", color: "#cbd5e1" }}
+                                style={{
+                                  fontSize: "0.8rem",
+                                  color: "#cbd5e1",
+                                }}
                               >
                                 —
                               </span>
@@ -743,7 +784,7 @@ export default function App() {
                             </div>
                           )}
 
-                          {/* AFFICHAGE DE LA NOTE SI LE STATUT N'EST PAS EN ÉDITION MAIS QU'UNE NOTE EXISTE */}
+                          {/* AFFICHAGE DE LA NOTE EXISTANTE */}
                           {isDue && !isWarning && hasNote && (
                             <div
                               style={{

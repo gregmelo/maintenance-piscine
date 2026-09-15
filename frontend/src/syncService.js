@@ -38,12 +38,13 @@ export async function fetchTasks(year, month) {
   return { data: localData, online: false, authError: false };
 }
 
-export async function updateTaskStatus(taskId, year, month, status, observation, user) {
+export async function updateTaskStatus(taskId, year, month, status, observation, user, completedAt = null) {
   const item = await db.tasksCache.get(taskId);
   if (item) {
     item.status = status;
     item.observation = observation;
     item.updatedBy = user;
+    item.completedAt = completedAt;
     await db.tasksCache.put(item);
   }
 
@@ -54,10 +55,12 @@ export async function updateTaskStatus(taskId, year, month, status, observation,
     status,
     observation: observation || '',
     updatedBy: user,
+    completedAt: completedAt,
     timestamp: Date.now()
   });
 
-  triggerSync();
+  // On attend que la synchro parte vers le serveur
+  await triggerSync();
 }
 
 export async function triggerSync() {
@@ -79,7 +82,9 @@ export async function triggerSync() {
 
     if (res.ok) {
       await db.syncQueue.clear();
-      console.log('Synchronisation auto réussie !');
+      console.log('Synchronisation auto réussie en base distante !');
+    } else {
+      console.error('Erreur retour API sync :', res.status, await res.text());
     }
   } catch (e) {
     console.warn('Échec de synchro automatique :', e);

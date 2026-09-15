@@ -90,7 +90,10 @@ class ApiController extends AbstractController
         $logRepo = $em->getRepository(TaskLog::class);
 
         foreach ($data as $item) {
-            $task = $taskRepo->find($item['taskId']);
+            $taskId = $item['taskId'] ?? $item['id'] ?? null;
+            if (!$taskId) continue;
+
+            $task = $taskRepo->find($taskId);
             if (!$task) continue;
 
             $year = (int)$item['year'];
@@ -111,7 +114,6 @@ class ApiController extends AbstractController
 
             if (in_array($item['status'], ['FAIT', 'RESERVE'])) {
                 $log->setUpdatedBy($item['updatedBy'] ?? 'Agent');
-                
                 if (!empty($item['completedAt'])) {
                     try {
                         $log->setCompletedAt(new \DateTimeImmutable($item['completedAt']));
@@ -122,7 +124,6 @@ class ApiController extends AbstractController
                     $log->setCompletedAt(new \DateTimeImmutable());
                 }
             } else {
-                // Si remis à A_FAIRE (annulation / erreur de clic)
                 $log->setUpdatedBy(null);
                 $log->setCompletedAt(null);
             }
