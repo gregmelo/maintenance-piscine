@@ -107,11 +107,11 @@ class ApiController extends AbstractController
 
             $log->setStatus($item['status']);
             $log->setObservation($item['observation'] ?? null);
-            $log->setUpdatedBy($item['updatedBy'] ?? 'Agent');
             $log->setUpdatedAt(new \DateTimeImmutable());
 
-            // Gestion de la date de réalisation
             if (in_array($item['status'], ['FAIT', 'RESERVE'])) {
+                $log->setUpdatedBy($item['updatedBy'] ?? 'Agent');
+                
                 if (!empty($item['completedAt'])) {
                     try {
                         $log->setCompletedAt(new \DateTimeImmutable($item['completedAt']));
@@ -122,6 +122,8 @@ class ApiController extends AbstractController
                     $log->setCompletedAt(new \DateTimeImmutable());
                 }
             } else {
+                // Si remis à A_FAIRE (annulation / erreur de clic)
+                $log->setUpdatedBy(null);
                 $log->setCompletedAt(null);
             }
         }
