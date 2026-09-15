@@ -40,6 +40,9 @@ class TaskLog
     #[ORM\Column(type: 'datetime_immutable', nullable: true)]
     private ?\DateTimeImmutable $completedAt = null;
 
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $photoUrl = null;
+
     public function __construct()
     {
         $this->updatedAt = new \DateTimeImmutable();
@@ -121,6 +124,18 @@ class TaskLog
     public function setCompletedAt(?\DateTimeImmutable $completedAt): static
     {
         $this->completedAt = $completedAt;
+
+        return $this;
+    }
+
+    public function getPhotoUrl(): ?string
+    {
+        return $this->photoUrl;
+    }
+
+    public function setPhotoUrl(?string $photoUrl): static
+    {
+        $this->photoUrl = $photoUrl;
 
         return $this;
     }

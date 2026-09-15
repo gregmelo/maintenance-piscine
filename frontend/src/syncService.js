@@ -38,13 +38,16 @@ export async function fetchTasks(year, month) {
   return { data: localData, online: false, authError: false };
 }
 
-export async function updateTaskStatus(taskId, year, month, status, observation, user, completedAt = null) {
+export async function updateTaskStatus(taskId, year, month, status, observation, user, completedAt = null, photoBase64 = null) {
   const item = await db.tasksCache.get(taskId);
   if (item) {
     item.status = status;
     item.observation = observation;
     item.updatedBy = user;
     item.completedAt = completedAt;
+    if (photoBase64) {
+      item.photoBase64 = photoBase64;
+    }
     await db.tasksCache.put(item);
   }
 
@@ -56,10 +59,10 @@ export async function updateTaskStatus(taskId, year, month, status, observation,
     observation: observation || '',
     updatedBy: user,
     completedAt: completedAt,
+    photoBase64: photoBase64 || null,
     timestamp: Date.now()
   });
 
-  // On attend que la synchro parte vers le serveur
   await triggerSync();
 }
 

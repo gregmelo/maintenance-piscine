@@ -16,7 +16,9 @@ import {
   WifiOff,
   Settings,
   MessageSquare,
+  Camera,
 } from "lucide-react";
+import { compressImage } from "./imageUtils";
 
 const MONTH_NAMES = [
   "Janvier",
@@ -64,8 +66,9 @@ export default function App() {
   const [openCategories, setOpenCategories] = useState({});
   const [authError, setAuthError] = useState(false);
 
-  // Observations en cours d'édition (par taskId)
+  // Observations et photos en cours d'édition (par taskId)
   const [notes, setNotes] = useState({});
+  const [photos, setPhotos] = useState({});
 
   // Configuration utilisateur & clé API
   const [user, setUser] = useState(
@@ -74,8 +77,7 @@ export default function App() {
   const [keyInput, setKeyInput] = useState(() => getApiKey());
   const [showSettings, setShowSettings] = useState(false);
 
-
-useEffect(() => {
+  useEffect(() => {
     let isMounted = true;
 
     async function loadData() {
@@ -133,6 +135,7 @@ useEffect(() => {
 
   const handleStatusChange = async (taskId, newStatus) => {
     const currentNote = notes[taskId] || "";
+    const currentPhoto = photos[taskId] || null;
     const isDoneOrReserve = newStatus === "FAIT" || newStatus === "RESERVE";
     const completedAt = isDoneOrReserve ? new Date().toISOString() : null;
     const operator = isDoneOrReserve ? user : null;
@@ -145,6 +148,7 @@ useEffect(() => {
       currentNote,
       operator,
       completedAt,
+      currentPhoto,
     );
 
     setTasks((prev) =>
@@ -156,6 +160,7 @@ useEffect(() => {
               observation: currentNote,
               updatedBy: operator,
               completedAt: completedAt,
+              photoBase64: currentPhoto,
             }
           : t,
       ),
@@ -166,8 +171,20 @@ useEffect(() => {
     setNotes((prev) => ({ ...prev, [taskId]: text }));
   };
 
+  const handlePhotoChange = async (taskId, file) => {
+    if (!file) return;
+    try {
+      const compressed = await compressImage(file);
+      setPhotos((prev) => ({ ...prev, [taskId]: compressed }));
+    } catch (err) {
+      console.error("Erreur compression image :", err);
+    }
+  };
+
   const handleSaveNote = async (task) => {
     const noteText = notes[task.id] || "";
+    const currentPhoto = photos[task.id] || null;
+
     await updateTaskStatus(
       task.id,
       selectedYear,
@@ -176,9 +193,15 @@ useEffect(() => {
       noteText,
       user,
       task.completedAt,
+      currentPhoto,
     );
+
     setTasks((prev) =>
-      prev.map((t) => (t.id === task.id ? { ...t, observation: noteText } : t)),
+      prev.map((t) =>
+        t.id === task.id
+          ? { ...t, observation: noteText, photoBase64: currentPhoto }
+          : t,
+      ),
     );
   };
 
@@ -715,7 +738,7 @@ useEffect(() => {
                             )}
                           </div>
 
-                          {/* ZONE TEXTAREA LORSQU'UNE RÉSERVE EST COCHÉE */}
+                          {/* ZONE TEXTAREA ET PHOTO LORSQU'UNE RÉSERVE EST COCHÉE */}
                           {isDue && isWarning && (
                             <div
                               style={{
@@ -758,6 +781,65 @@ useEffect(() => {
                                   resize: "vertical",
                                 }}
                               />
+
+                              {/* Bouton de prise de vue & Aperçu */}
+                              <div
+                                style={{
+                                  marginTop: "8px",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "10px",
+                                }}
+                              >
+                                <label
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "6px",
+                                    backgroundColor: "#fef3c7",
+                                    color: "#92400e",
+                                    border: "1px solid #fcd34d",
+                                    padding: "6px 10px",
+                                    borderRadius: "6px",
+                                    fontSize: "0.8rem",
+                                    fontWeight: "600",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  <Camera size={16} /> Ajouter une photo
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    capture="environment"
+                                    style={{ display: "none" }}
+                                    onChange={(e) =>
+                                      handlePhotoChange(
+                                        task.id,
+                                        e.target.files[0],
+                                      )
+                                    }
+                                  />
+                                </label>
+
+                                {(photos[task.id] || task.photoUrl) && (
+                                  <img
+                                    src={
+                                      photos[task.id]
+                                        ? photos[task.id]
+                                        : `https://vericelgregory.alwaysdata.net/piscine${task.photoUrl}`
+                                    }
+                                    alt="Aperçu réserve"
+                                    style={{
+                                      width: "42px",
+                                      height: "42px",
+                                      objectFit: "cover",
+                                      borderRadius: "6px",
+                                      border: "1px solid #cbd5e1",
+                                    }}
+                                  />
+                                )}
+                              </div>
+
                               <div
                                 style={{
                                   display: "flex",
@@ -784,7 +866,7 @@ useEffect(() => {
                             </div>
                           )}
 
-                          {/* AFFICHAGE DE LA NOTE EXISTANTE */}
+                          {/* AFFICHAGE DE LA NOTE ET DE LA PHOTO EXISTANTES */}
                           {isDue && !isWarning && hasNote && (
                             <div
                               style={{
@@ -795,10 +877,34 @@ useEffect(() => {
                                 padding: "6px 10px",
                                 borderRadius: "6px",
                                 borderLeft: "3px solid #cbd5e1",
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
                               }}
                             >
-                              <strong>Note précédente :</strong>{" "}
-                              {task.observation}
+                              <div>
+                                <strong>Note précédente :</strong>{" "}
+                                {task.observation}
+                              </div>
+                              {task.photoUrl && (
+                                <a
+                                  href={`https://vericelgregory.alwaysdata.net/piscine${task.photoUrl}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  <img
+                                    src={`https://vericelgregory.alwaysdata.net/piscine${task.photoUrl}`}
+                                    alt="Photo"
+                                    style={{
+                                      width: "36px",
+                                      height: "36px",
+                                      objectFit: "cover",
+                                      borderRadius: "4px",
+                                      border: "1px solid #cbd5e1",
+                                    }}
+                                  />
+                                </a>
+                              )}
                             </div>
                           )}
                         </div>

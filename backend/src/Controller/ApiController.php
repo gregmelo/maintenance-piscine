@@ -68,6 +68,7 @@ class ApiController extends AbstractController
                 'updatedBy' => $currentLog ? $currentLog->getUpdatedBy() : null,
                 'updatedAt' => $currentLog ? $currentLog->getUpdatedAt()->format(\DateTimeInterface::ATOM) : null,
                 'completedAt' => $currentLog?->getCompletedAt()?->format(\DateTimeInterface::ATOM),
+                'photoUrl' => $currentLog?->getPhotoUrl(),
             ];
         }
 
@@ -126,6 +127,26 @@ class ApiController extends AbstractController
             } else {
                 $log->setUpdatedBy(null);
                 $log->setCompletedAt(null);
+            }
+
+            // Gestion de la photo envoyée en base64 pour les réserves
+            if (!empty($item['photoBase64'])) {
+                $uploadDir = $this->getParameter('kernel.project_dir') . '/public/uploads/tasks';
+                if (!is_dir($uploadDir)) {
+                    mkdir($uploadDir, 0775, true);
+                }
+
+                if (preg_match('/^data:image\/(\w+);base64,/', $item['photoBase64'], $type)) {
+                    $dataImg = substr($item['photoBase64'], strpos($item['photoBase64'], ',') + 1);
+                    $dataImg = base64_decode($dataImg);
+
+                    if ($dataImg !== false) {
+                        $extension = strtolower($type[1]);
+                        $filename = sprintf('task_%d_%d_%d_%s.%s', $task->getId(), $year, $month, uniqid(), $extension);
+                        file_put_contents($uploadDir . '/' . $filename, $dataImg);
+                        $log->setPhotoUrl('/uploads/tasks/' . $filename);
+                    }
+                }
             }
         }
 
