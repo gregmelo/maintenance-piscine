@@ -19,9 +19,12 @@ import {
   Camera,
   X,
   Shield,
+  Printer,
+  Download,
 } from "lucide-react";
 import { compressImage } from "./imageUtils";
 import AdminDashboard from "./AdminDashboard";
+import { exportTasksToCSV } from "./exportUtils";
 
 const MONTH_NAMES = [
   "Janvier",
@@ -249,6 +252,29 @@ export default function App() {
         padding: "16px",
       }}
     >
+      <style>{`
+        @media print {
+          header button, .no-print, input, textarea, select {
+            display: none !important;
+          }
+          body, #root {
+            background-color: #ffffff !important;
+            padding: 0 !important;
+          }
+          .print-only {
+            display: block !important;
+          }
+          .page-break {
+            page-break-inside: avoid;
+          }
+        }
+        @media screen {
+          .print-only {
+            display: none;
+          }
+        }
+      `}</style>
+
       <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
         {/* EN-TÊTE */}
         <header
@@ -288,7 +314,7 @@ export default function App() {
             </p>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }} className="no-print">
             <div
               style={{
                 display: "flex",
@@ -341,6 +367,7 @@ export default function App() {
         {/* PARAMÈTRES / SÉCURITÉ */}
         {showSettings && (
           <div
+            className="no-print"
             style={{
               backgroundColor: "#ffffff",
               padding: "20px",
@@ -436,6 +463,7 @@ export default function App() {
 
         {authError && (
           <div
+            className="no-print"
             style={{
               backgroundColor: "#fee2e2",
               border: "1px solid #f87171",
@@ -470,30 +498,81 @@ export default function App() {
               gap: "16px",
             }}
           >
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(Number(e.target.value))}
-              style={{
-                fontSize: "1.05rem",
-                fontWeight: "bold",
-                color: "#0f172a",
-                backgroundColor: "#ffffff",
-                border: "1px solid #cbd5e1",
-                borderRadius: "8px",
-                padding: "8px 14px",
-                cursor: "pointer",
-              }}
-            >
-              {MONTH_NAMES.map((name, idx) => (
-                <option
-                  key={idx + 1}
-                  value={idx + 1}
-                  style={{ color: "#0f172a", backgroundColor: "#ffffff" }}
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                style={{
+                  fontSize: "1.05rem",
+                  fontWeight: "bold",
+                  color: "#0f172a",
+                  backgroundColor: "#ffffff",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "8px",
+                  padding: "8px 14px",
+                  cursor: "pointer",
+                }}
+              >
+                {MONTH_NAMES.map((name, idx) => (
+                  <option
+                    key={idx + 1}
+                    value={idx + 1}
+                    style={{ color: "#0f172a", backgroundColor: "#ffffff" }}
+                  >
+                    {name} {selectedYear}
+                  </option>
+                ))}
+              </select>
+
+              {/* BOUTONS EXPORT CSV & IMPRESSION */}
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }} className="no-print">
+                <button
+                  onClick={() =>
+                    exportTasksToCSV(
+                      dueTasks,
+                      MONTH_NAMES[selectedMonth - 1],
+                      selectedYear,
+                    )
+                  }
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    backgroundColor: "#f1f5f9",
+                    color: "#334155",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: "8px",
+                    padding: "8px 12px",
+                    fontSize: "0.85rem",
+                    fontWeight: "600",
+                    cursor: "pointer",
+                  }}
+                  title="Exporter le registre en fichier Excel / CSV"
                 >
-                  {name} {selectedYear}
-                </option>
-              ))}
-            </select>
+                  <Download size={16} /> Exporter CSV
+                </button>
+
+                <button
+                  onClick={() => window.print()}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    backgroundColor: "#f1f5f9",
+                    color: "#334155",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: "8px",
+                    padding: "8px 12px",
+                    fontSize: "0.85rem",
+                    fontWeight: "600",
+                    cursor: "pointer",
+                  }}
+                  title="Imprimer ou enregistrer en PDF"
+                >
+                  <Printer size={16} /> Imprimer / PDF
+                </button>
+              </div>
+            </div>
 
             <div style={{ display: "flex", gap: "20px", alignItems: "center" }}>
               <div style={{ textAlign: "right" }}>
@@ -677,6 +756,7 @@ export default function App() {
                             {/* BOUTONS ACTIONS */}
                             {isDue ? (
                               <div
+                                className="no-print"
                                 style={{
                                   display: "flex",
                                   gap: "6px",
@@ -812,6 +892,7 @@ export default function App() {
                                 }}
                               >
                                 <label
+                                  className="no-print"
                                   style={{
                                     display: "inline-flex",
                                     alignItems: "center",
@@ -862,6 +943,7 @@ export default function App() {
                                       objectFit: "cover",
                                       borderRadius: "6px",
                                       border: "1px solid #cbd5e1",
+                                      cursor: "pointer",
                                     }}
                                     title="Cliquer pour agrandir l'image"
                                   />
@@ -869,6 +951,7 @@ export default function App() {
                               </div>
 
                               <div
+                                className="no-print"
                                 style={{
                                   display: "flex",
                                   justifyContent: "flex-end",
@@ -945,12 +1028,42 @@ export default function App() {
             );
           })}
         </div>
+
+        {/* CARTOUCHE D'ÉMARGEMENT POUR L'IMPRESSION RÉGLEMENTAIRE */}
+        <div
+          className="print-only"
+          style={{
+            marginTop: "40px",
+            padding: "16px",
+            border: "1px solid #94a3b8",
+            borderRadius: "8px",
+            pageBreakInside: "avoid",
+          }}
+        >
+          <h4 style={{ margin: "0 0 10px 0" }}>
+            Émargement et validation réglementaire
+          </h4>
+          <p
+            style={{
+              fontSize: "0.85rem",
+              color: "#334155",
+              margin: "0 0 40px 0",
+            }}
+          >
+            Registre de vérifications périodiques — Mois de{" "}
+            {MONTH_NAMES[selectedMonth - 1]} {selectedYear}
+          </p>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <div>Signature du technicien : ___________________</div>
+            <div>Visa de la direction / régie : ___________________</div>
+          </div>
+        </div>
+
         {/* ESPACE ADMIN */}
         {showAdmin && (
           <AdminDashboard
             onClose={() => setShowAdmin(false)}
             onDataChanged={() => {
-              // Recharge immédiatement les données du mois en cours
               window.location.reload();
             }}
             onPreviewImage={(url) => setPreviewImage(url)}
