@@ -154,4 +154,157 @@ class ApiController extends AbstractController
 
         return $this->json(['status' => 'success', 'syncedCount' => count($data)]);
     }
+
+    #[Route('/admin/reserves', name: 'api_admin_reserves', methods: ['GET'])]
+    public function getAdminReserves(Request $request, EntityManagerInterface $em): JsonResponse
+    {
+        if (!$this->isAuthorized($request)) {
+            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $logRepo = $em->getRepository(TaskLog::class);
+        $reserves = $logRepo->findBy(['status' => 'RESERVE'], ['year' => 'DESC', 'month' => 'DESC', 'updatedAt' => 'DESC']);
+
+        $data = [];
+        foreach ($reserves as $log) {
+            $task = $log->getTask();
+            $data[] = [
+                'logId' => $log->getId(),
+                'taskId' => $task->getId(),
+                'taskTitle' => $task->getTitle(),
+                'category' => $task->getCategory()?->getName(),
+                'frequency' => $task->getFrequency(),
+                'year' => $log->getYear(),
+                'month' => $log->getMonth(),
+                'observation' => $log->getObservation(),
+                'updatedBy' => $log->getUpdatedBy(),
+                'completedAt' => $log->getCompletedAt()?->format(\DateTimeInterface::ATOM),
+                'photoUrl' => $log->getPhotoUrl(),
+            ];
+        }
+
+        return $this->json($data);
+    }
+
+    #[Route('/admin/reserves/{id}/resolve', name: 'api_admin_resolve_reserve', methods: ['POST'])]
+    public function resolveReserve(int $id, Request $request, EntityManagerInterface $em): JsonResponse
+    {
+        if (!$this->isAuthorized($request)) {
+            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $log = $em->getRepository(TaskLog::class)->find($id);
+        if (!$log) {
+            return $this->json(['error' => 'Enregistrement introuvable'], Response::HTTP_NOT_FOUND);
+        }
+
+        $body = json_decode($request->getContent(), true) ?? [];
+        $deletePhoto = $body['deletePhoto'] ?? true;
+        $resolutionNote = trim($body['resolutionNote'] ?? '');
+        $adminUser = $body['user'] ?? 'Grégory';
+
+        // 1. Suppression du fichier physique de la photo sur le disque si demandé
+        if ($deletePhoto && $log->getPhotoUrl()) {
+            $filePath = $this->getParameter('kernel.project_dir') . '/public' . $log->getPhotoUrl();
+            if (file_exists($filePath)) {
+                unlink($filePath);
+            }
+            $log->setPhotoUrl(null);
+        }
+
+        // 2. Mise à jour de l'observation
+        if (!empty($resolutionNote)) {
+            $initialNote = $log->getObservation() ? $log->getObservation() . " | " : "";
+            $log->setObservation($initialNote . "[Résolu par " . $adminUser . " : " . $resolutionNote . "]");
+        }
+
+        // 3. Passage au statut FAIT (vert)
+        $log->setStatus('FAIT');
+        $log->setUpdatedBy($adminUser);
+        $log->setCompletedAt(new \DateTimeImmutable());
+        $log->setUpdatedAt(new \DateTimeImmutable());
+
+        $em->flush();
+
+        return $this->json(['status' => 'success', 'message' => 'Réserve levée avec succès']);
+    }
+
+   #[Route('/admin/tasks', name: 'api_admin_add_task', methods: ['POST'])]
+    public function addTask(Request $request, EntityManagerInterface $em): JsonResponse
+    {
+        if (!$this->isAuthorized($request)) {
+            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $body = json_decode($request->getContent(), true);
+        if (empty($body['title']) || empty($body['category'])) {
+            return $this->json(['error' => 'Titre et catégorie obligatoires'], Response::HTTP_BAD_REQUEST);
+        }
+
+        // 1. Récupérer ou créer la catégorie
+        $categoryRepo = $em->getRepository(\App\Entity\Category::class);
+        $category = $categoryRepo->findOneBy(['name' => $body['category']]);
+        if (!$category) {
+            $category = new \App\Entity\Category();
+            $category->setName($body['category']);
+            $em->persist($category);
+        }
+
+        // 2. Déduire startMonth et intervalMonths selon la fréquence choisie
+        $frequency = $body['frequency'] ?? 'Mensuel';
+        $intervalMonths = 1;
+        $startMonth = isset($body['startMonth']) ? (int)$body['startMonth'] : 1;
+
+        if ($frequency === 'Trimestriel') {
+            $intervalMonths = 3;
+        } elseif ($frequency === 'Semestriel') {
+            $intervalMonths = 6;
+        } elseif ($frequency === 'Annuel') {
+            $intervalMonths = 12;
+        }
+
+        // 3. Créer la tâche
+        $task = new MaintenanceTask();
+        $task->setTitle($body['title']);
+        $task->setCategory($category);
+        $task->setFrequency($frequency);
+        $task->setStartMonth($startMonth);
+        $task->setIntervalMonths($intervalMonths);
+
+        $em->persist($task);
+        $em->flush();
+
+        return $this->json(['status' => 'success', 'taskId' => $task->getId()], Response::HTTP_CREATED);
+    }
+
+    #[Route('/admin/tasks/{id}', name: 'api_admin_delete_task', methods: ['DELETE'])]
+    public function deleteTask(int $id, Request $request, EntityManagerInterface $em): JsonResponse
+    {
+        if (!$this->isAuthorized($request)) {
+            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $task = $em->getRepository(MaintenanceTask::class)->find($id);
+        if (!$task) {
+            return $this->json(['error' => 'Tâche introuvable'], Response::HTTP_NOT_FOUND);
+        }
+
+        // Supprimer d'abord les logs associés à cette tâche pour éviter les contraintes de clé étrangère
+        $logRepo = $em->getRepository(TaskLog::class);
+        $logs = $logRepo->findBy(['task' => $task]);
+        foreach ($logs as $log) {
+            if ($log->getPhotoUrl()) {
+                $filePath = $this->getParameter('kernel.project_dir') . '/public' . $log->getPhotoUrl();
+                if (file_exists($filePath)) {
+                    unlink($filePath);
+                }
+            }
+            $em->remove($log);
+        }
+
+        $em->remove($task);
+        $em->flush();
+
+        return $this->json(['status' => 'success', 'message' => 'Tâche supprimée avec succès']);
+    }
 }
