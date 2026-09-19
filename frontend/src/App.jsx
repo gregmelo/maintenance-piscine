@@ -17,8 +17,11 @@ import {
   Settings,
   MessageSquare,
   Camera,
+  X,
+  Shield,
 } from "lucide-react";
 import { compressImage } from "./imageUtils";
+import AdminDashboard from "./AdminDashboard";
 
 const MONTH_NAMES = [
   "Janvier",
@@ -69,6 +72,7 @@ export default function App() {
   // Observations et photos en cours d'édition (par taskId)
   const [notes, setNotes] = useState({});
   const [photos, setPhotos] = useState({});
+  const [previewImage, setPreviewImage] = useState(null);
 
   // Configuration utilisateur & clé API
   const [user, setUser] = useState(
@@ -76,6 +80,7 @@ export default function App() {
   );
   const [keyInput, setKeyInput] = useState(() => getApiKey());
   const [showSettings, setShowSettings] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -314,6 +319,21 @@ export default function App() {
               title="Paramètres d'accès"
             >
               <Settings size={18} color="#475569" />
+            </button>
+            <button
+              onClick={() => setShowAdmin(true)}
+              style={{
+                border: "none",
+                background: "#e0f2fe",
+                borderRadius: "8px",
+                padding: "8px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+              }}
+              title="Administration & Registre des anomalies"
+            >
+              <Shield size={18} color="#0284c7" />
             </button>
           </div>
         </header>
@@ -829,6 +849,13 @@ export default function App() {
                                         : `https://vericelgregory.alwaysdata.net/piscine${task.photoUrl}`
                                     }
                                     alt="Aperçu réserve"
+                                    onClick={() =>
+                                      setPreviewImage(
+                                        photos[task.id]
+                                          ? photos[task.id]
+                                          : `https://vericelgregory.alwaysdata.net/piscine${task.photoUrl}`,
+                                      )
+                                    }
                                     style={{
                                       width: "42px",
                                       height: "42px",
@@ -836,6 +863,7 @@ export default function App() {
                                       borderRadius: "6px",
                                       border: "1px solid #cbd5e1",
                                     }}
+                                    title="Cliquer pour agrandir l'image"
                                   />
                                 )}
                               </div>
@@ -887,23 +915,24 @@ export default function App() {
                                 {task.observation}
                               </div>
                               {task.photoUrl && (
-                                <a
-                                  href={`https://vericelgregory.alwaysdata.net/piscine${task.photoUrl}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                >
-                                  <img
-                                    src={`https://vericelgregory.alwaysdata.net/piscine${task.photoUrl}`}
-                                    alt="Photo"
-                                    style={{
-                                      width: "36px",
-                                      height: "36px",
-                                      objectFit: "cover",
-                                      borderRadius: "4px",
-                                      border: "1px solid #cbd5e1",
-                                    }}
-                                  />
-                                </a>
+                                <img
+                                  src={`https://vericelgregory.alwaysdata.net/piscine${task.photoUrl}`}
+                                  alt="Photo réserve"
+                                  onClick={() =>
+                                    setPreviewImage(
+                                      `https://vericelgregory.alwaysdata.net/piscine${task.photoUrl}`,
+                                    )
+                                  }
+                                  style={{
+                                    width: "36px",
+                                    height: "36px",
+                                    objectFit: "cover",
+                                    borderRadius: "4px",
+                                    border: "1px solid #cbd5e1",
+                                    cursor: "pointer",
+                                  }}
+                                  title="Cliquer pour agrandir"
+                                />
                               )}
                             </div>
                           )}
@@ -916,6 +945,81 @@ export default function App() {
             );
           })}
         </div>
+        {/* ESPACE ADMIN */}
+        {showAdmin && (
+          <AdminDashboard
+            onClose={() => setShowAdmin(false)}
+            onDataChanged={() => {
+              // Recharge immédiatement les données du mois en cours
+              window.location.reload();
+            }}
+            onPreviewImage={(url) => setPreviewImage(url)}
+          />
+        )}
+
+        {/* MODALE LIGHTBOX */}
+        {previewImage && (
+          <div
+            onClick={() => setPreviewImage(null)}
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              width: "100vw",
+              height: "100vh",
+              backgroundColor: "rgba(15, 23, 42, 0.85)",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              zIndex: 9999,
+              padding: "20px",
+              boxSizing: "border-box",
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: "relative",
+                maxWidth: "90vw",
+                maxHeight: "90vh",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+              }}
+            >
+              <button
+                onClick={() => setPreviewImage(null)}
+                style={{
+                  position: "absolute",
+                  top: "-45px",
+                  right: 0,
+                  background: "transparent",
+                  border: "none",
+                  color: "#ffffff",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontSize: "0.9rem",
+                }}
+              >
+                <X size={24} /> Fermer
+              </button>
+              <img
+                src={previewImage}
+                alt="Agrandissement"
+                style={{
+                  maxWidth: "100%",
+                  maxHeight: "85vh",
+                  objectFit: "contain",
+                  borderRadius: "8px",
+                  boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.5)",
+                  border: "2px solid #334155",
+                }}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
