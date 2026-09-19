@@ -20,11 +20,12 @@ import {
   X,
   Shield,
   Printer,
-  Download,
+  FileSpreadsheet,
 } from "lucide-react";
 import { compressImage } from "./imageUtils";
 import AdminDashboard from "./AdminDashboard";
 import { exportTasksToCSV, exportTasksToPDF } from "./exportUtils";
+import { useRegisterSW } from "virtual:pwa-register/react";
 
 const MONTH_NAMES = [
   "Janvier",
@@ -41,7 +42,6 @@ const MONTH_NAMES = [
   "Décembre",
 ];
 
-// Helper pour formater la date/heure en français
 function formatCompletedAt(isoString) {
   if (!isoString) return "";
   try {
@@ -72,18 +72,28 @@ export default function App() {
   const [openCategories, setOpenCategories] = useState({});
   const [authError, setAuthError] = useState(false);
 
-  // Observations et photos en cours d'édition (par taskId)
   const [notes, setNotes] = useState({});
   const [photos, setPhotos] = useState({});
   const [previewImage, setPreviewImage] = useState(null);
 
-  // Configuration utilisateur & clé API
   const [user, setUser] = useState(
     () => localStorage.getItem("pool_user") || "Grégory",
   );
   const [keyInput, setKeyInput] = useState(() => getApiKey());
   const [showSettings, setShowSettings] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
+
+  const {
+    needRefresh: [needRefresh],
+    updateServiceWorker,
+  } = useRegisterSW({
+    onRegistered() {
+      console.log("SW enregistré");
+    },
+    onRegisterError(error) {
+      console.error("Erreur SW", error);
+    },
+  });
 
   useEffect(() => {
     let isMounted = true;
@@ -220,7 +230,6 @@ export default function App() {
     window.location.reload();
   };
 
-  // Groupement par catégorie avec tri : les tâches dues en premier
   const groupedTasks = tasks.reduce((acc, task) => {
     acc[task.category] = acc[task.category] || [];
     acc[task.category].push(task);
@@ -291,6 +300,42 @@ export default function App() {
             boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
           }}
         >
+          {needRefresh && (
+            <div
+              style={{
+                width: "100%",
+                backgroundColor: "#0284c7",
+                color: "#ffffff",
+                padding: "10px 16px",
+                borderRadius: "10px",
+                marginBottom: "10px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)",
+              }}
+            >
+              <span style={{ fontSize: "0.9rem", fontWeight: "500" }}>
+                Une nouvelle version est disponible !
+              </span>
+              <button
+                onClick={() => updateServiceWorker(true)}
+                style={{
+                  backgroundColor: "#ffffff",
+                  color: "#0284c7",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "6px 14px",
+                  fontWeight: "bold",
+                  fontSize: "0.85rem",
+                  cursor: "pointer",
+                }}
+              >
+                Mettre à jour
+              </button>
+            </div>
+          )}
+
           <div>
             <h1
               style={{
@@ -534,7 +579,7 @@ export default function App() {
                 ))}
               </select>
 
-              {/* BOUTONS EXPORT CSV & IMPRESSION */}
+              {/* BOUTONS EXPORT CSV & PDF */}
               <div
                 style={{ display: "flex", gap: "8px", alignItems: "center" }}
                 className="no-print"
@@ -560,9 +605,9 @@ export default function App() {
                     fontWeight: "600",
                     cursor: "pointer",
                   }}
-                  title="Exporter le registre en fichier Excel / CSV"
+                  title="Exporter le registre en fichier CSV / Excel"
                 >
-                  <Download size={16} /> Exporter CSV
+                  <FileSpreadsheet size={16} /> Exporter CSV
                 </button>
 
                 <button
