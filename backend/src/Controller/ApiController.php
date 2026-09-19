@@ -366,4 +366,73 @@ class ApiController extends AbstractController
             'months' => $summary,
         ]);
     }
+
+    #[Route('/admin/verify-pin', name: 'api_admin_verify_pin', methods: ['POST'])]
+    public function verifyAdminPin(Request $request, EntityManagerInterface $em): JsonResponse
+    {
+        if (!$this->isAuthorized($request)) {
+            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $data = json_decode($request->getContent(), true) ?? [];
+        $submittedPin = (string)($data['pin'] ?? '');
+
+        // Vérifier dans la base SQLite via DBAL si une table app_config existe
+        $conn = $em->getConnection();
+        $conn->executeStatement("
+            CREATE TABLE IF NOT EXISTS app_config (
+                config_key VARCHAR(50) PRIMARY KEY,
+                config_value VARCHAR(255) NOT NULL
+            )
+        ");
+
+        $storedPin = $conn->fetchOne("SELECT config_value FROM app_config WHERE config_key = 'admin_pin'");
+        if (!$storedPin) {
+            // PIN par défaut si non initialisé
+            $storedPin = '2026';
+            $conn->executeStatement("INSERT INTO app_config (config_key, config_value) VALUES ('admin_pin', '2026')");
+        }
+
+        if ($submittedPin === (string)$storedPin) {
+            // Génération d'un token de session éphémère simple
+            $token = bin2hex(random_bytes(16));
+            return $this->json(['valid' => true, 'token' => $token]);
+        }
+
+        return $this->json(['valid' => false, 'error' => 'Code PIN incorrect'], Response::HTTP_FORBIDDEN);
+    }
+
+    #[Route('/admin/update-pin', name: 'api_admin_update_pin', methods: ['POST'])]
+    public function updateAdminPin(Request $request, EntityManagerInterface $em): JsonResponse
+    {
+        if (!$this->isAuthorized($request)) {
+            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $data = json_decode($request->getContent(), true) ?? [];
+        $currentPin = (string)($data['currentPin'] ?? '');
+        $newPin = trim((string)($data['newPin'] ?? ''));
+
+        if (strlen($newPin) < 4) {
+            return $this->json(['error' => 'Le code PIN doit comporter au moins 4 caractères'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $conn = $em->getConnection();
+        $storedPin = $conn->fetchOne("SELECT config_value FROM app_config WHERE config_key = 'admin_pin'");
+        if (!$storedPin) {
+            $storedPin = '2026';
+        }
+
+        if ($currentPin !== (string)$storedPin) {
+            return $this->json(['error' => 'Code PIN actuel incorrect'], Response::HTTP_FORBIDDEN);
+        }
+
+        $conn->executeStatement("
+            INSERT INTO app_config (config_key, config_value) 
+            VALUES ('admin_pin', :val) 
+            ON CONFLICT(config_key) DO UPDATE SET config_value = :val
+        ", ['val' => $newPin]);
+
+        return $this->json(['success' => true, 'message' => 'Code PIN mis à jour avec succès']);
+    }
 }

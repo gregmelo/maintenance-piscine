@@ -7,6 +7,7 @@ import {
   X,
   Lock,
   BarChart3,
+  KeyRound,
 } from "lucide-react";
 import { getApiKey } from "./syncService";
 
@@ -29,11 +30,17 @@ const MONTH_NAMES = [
 
 export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage }) {
   const [isAdminAuth, setIsAdminAuth] = useState(
-    () => sessionStorage.getItem("pool_admin_session") === "true"
+    () => Boolean(sessionStorage.getItem("pool_admin_token"))
   );
   const [pinInput, setPinInput] = useState("");
-  const [authError, setAuthError] = useState(false);
-  const [activeTab, setActiveTab] = useState("summary"); // "summary" | "reserves" | "tasks"
+  const [authError, setAuthError] = useState("");
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [activeTab, setActiveTab] = useState("summary"); // "summary" | "reserves" | "tasks" | "security"
+
+  // Changement de PIN
+  const [oldPin, setOldPin] = useState("");
+  const [newPin, setNewPin] = useState("");
+  const [pinChangeMsg, setPinChangeMsg] = useState({ type: "", text: "" });
 
   // Synthèse annuelle
   const [summaryYear, setSummaryYear] = useState(new Date().getFullYear());
@@ -56,14 +63,64 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
 
   const apiKey = getApiKey();
 
-  const handleLogin = (e) => {
+  // 1. Authentification via le serveur backend
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (pinInput === "2026") {
-      setIsAdminAuth(true);
-      sessionStorage.setItem("pool_admin_session", "true");
-      setAuthError(false);
-    } else {
-      setAuthError(true);
+    if (!pinInput.trim()) return;
+
+    setIsVerifying(true);
+    setAuthError("");
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/verify-pin`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-KEY": apiKey,
+        },
+        body: JSON.stringify({ pin: pinInput }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.valid) {
+        sessionStorage.setItem("pool_admin_token", data.token);
+        setIsAdminAuth(true);
+        setPinInput("");
+      } else {
+        setAuthError(data.error || "Code PIN incorrect");
+      }
+    } catch {
+      setAuthError("Erreur réseau ou clé d'API invalide");
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  // 2. Mise à jour du code PIN
+  const handleUpdatePin = async (e) => {
+    e.preventDefault();
+    setPinChangeMsg({ type: "", text: "" });
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/update-pin`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-KEY": apiKey,
+        },
+        body: JSON.stringify({ currentPin: oldPin, newPin: newPin }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setPinChangeMsg({ type: "success", text: "Code PIN modifié avec succès !" });
+        setOldPin("");
+        setNewPin("");
+      } else {
+        setPinChangeMsg({ type: "error", text: data.error || "Erreur lors de la modification" });
+      }
+    } catch {
+      setPinChangeMsg({ type: "error", text: "Erreur de connexion au serveur" });
     }
   };
 
@@ -261,7 +318,7 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
               type="password"
               value={pinInput}
               onChange={(e) => setPinInput(e.target.value)}
-              placeholder="Code PIN (2026)"
+              placeholder="Code PIN"
               autoFocus
               style={{
                 width: "100%",
@@ -275,8 +332,10 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
                 marginBottom: "12px",
               }}
             />
-            {authError && <p style={{ color: "#ef4444", fontSize: "0.8rem", margin: "0 0 10px" }}>Code PIN erroné</p>}
-            <button type="submit" style={primaryBtnStyle}>Déverrouiller</button>
+            {authError && <p style={{ color: "#ef4444", fontSize: "0.8rem", margin: "0 0 10px" }}>{authError}</p>}
+            <button type="submit" disabled={isVerifying} style={primaryBtnStyle}>
+              {isVerifying ? "Vérification..." : "Déverrouiller"}
+            </button>
           </form>
         </div>
       </div>
@@ -301,7 +360,7 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
         </div>
 
         {/* ONGLETS NAVIGATION */}
-        <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
+        <div style={{ display: "flex", gap: "10px", marginBottom: "16px", flexWrap: "wrap" }}>
           <button
             onClick={() => setActiveTab("summary")}
             style={{
@@ -349,6 +408,24 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
             }}
           >
             Gestion des tâches ({tasksList.length})
+          </button>
+          <button
+            onClick={() => setActiveTab("security")}
+            style={{
+              padding: "8px 16px",
+              borderRadius: "8px",
+              border: "none",
+              cursor: "pointer",
+              fontWeight: "600",
+              fontSize: "0.9rem",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              backgroundColor: activeTab === "security" ? "#0284c7" : "#f1f5f9",
+              color: activeTab === "security" ? "#ffffff" : "#475569",
+            }}
+          >
+            <KeyRound size={16} /> Sécurité / PIN
           </button>
         </div>
 
@@ -619,6 +696,64 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* CONTENU ONGLET 4 : SÉCURITÉ / PIN */}
+        {activeTab === "security" && (
+          <div style={{ flex: 1, overflowY: "auto", paddingRight: "4px" }}>
+            <div style={{ maxWidth: "450px", margin: "0 auto", background: "#f8fafc", padding: "20px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
+              <h3 style={{ margin: "0 0 10px", fontSize: "1rem", color: "#1e293b", display: "flex", alignItems: "center", gap: "8px" }}>
+                <KeyRound size={18} color="#0284c7" /> Modifier le code PIN Administrateur
+              </h3>
+              <p style={{ fontSize: "0.85rem", color: "#64748b", margin: "0 0 16px" }}>
+                Le code PIN protège l'accès à ce panneau de contrôle et au registre des anomalies.
+              </p>
+
+              {pinChangeMsg.text && (
+                <div
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: "6px",
+                    fontSize: "0.85rem",
+                    marginBottom: "14px",
+                    backgroundColor: pinChangeMsg.type === "success" ? "#dcfce7" : "#fee2e2",
+                    color: pinChangeMsg.type === "success" ? "#166534" : "#991b1b",
+                    border: `1px solid ${pinChangeMsg.type === "success" ? "#86efac" : "#fca5a5"}`,
+                  }}
+                >
+                  {pinChangeMsg.text}
+                </div>
+              )}
+
+              <form onSubmit={handleUpdatePin}>
+                <div style={{ marginBottom: "12px" }}>
+                  <label style={labelStyle}>Code PIN actuel :</label>
+                  <input
+                    type="password"
+                    value={oldPin}
+                    onChange={(e) => setOldPin(e.target.value)}
+                    required
+                    placeholder="PIN actuel (ex: 2026)"
+                    style={inputStyle}
+                  />
+                </div>
+                <div style={{ marginBottom: "16px" }}>
+                  <label style={labelStyle}>Nouveau code PIN (min. 4 caractères) :</label>
+                  <input
+                    type="password"
+                    value={newPin}
+                    onChange={(e) => setNewPin(e.target.value)}
+                    required
+                    placeholder="Nouveau code PIN"
+                    style={inputStyle}
+                  />
+                </div>
+                <button type="submit" style={primaryBtnStyle}>
+                  Enregistrer le nouveau code PIN
+                </button>
+              </form>
             </div>
           </div>
         )}
