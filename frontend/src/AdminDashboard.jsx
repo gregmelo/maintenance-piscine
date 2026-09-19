@@ -320,7 +320,12 @@ export default function AdminDashboard({
       console.error("Erreur suppression tâche :", e);
     }
   };
-
+  const handleClose = () => {
+    // Supprime la session admin pour réclamer le code PIN à la prochaine visite
+    sessionStorage.removeItem("pool_admin_token");
+    setIsAdminAuth(false);
+    onClose();
+  };
   if (!isAdminAuth) {
     return (
       <div style={modalOverlayStyle}>
@@ -404,12 +409,7 @@ export default function AdminDashboard({
       </div>
     );
   }
-  const handleClose = () => {
-    // Supprime la session admin pour réclamer le code PIN à la prochaine visite
-    sessionStorage.removeItem("pool_admin_token");
-    setIsAdminAuth(false);
-    onClose();
-  };
+
   return (
     <div style={modalOverlayStyle}>
       <div
