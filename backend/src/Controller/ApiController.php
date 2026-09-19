@@ -307,4 +307,63 @@ class ApiController extends AbstractController
 
         return $this->json(['status' => 'success', 'message' => 'Tâche supprimée avec succès']);
     }
+
+    #[Route('/admin/summary', name: 'api_admin_summary', methods: ['GET'])]
+    public function getAdminSummary(Request $request, EntityManagerInterface $em): JsonResponse
+    {
+        if (!$this->isAuthorized($request)) {
+            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $year = (int)$request->query->get('year', (int)date('Y'));
+
+        $tasks = $em->getRepository(MaintenanceTask::class)->findAll();
+        $logRepo = $em->getRepository(TaskLog::class);
+
+        $summary = [];
+
+        for ($month = 1; $month <= 12; $month++) {
+            $dueCount = 0;
+            $doneCount = 0;
+            $reserveCount = 0;
+
+            foreach ($tasks as $task) {
+                // Vérifier si la tâche est due pour ce mois
+                $start = $task->getStartMonth();
+                $interval = $task->getIntervalMonths();
+                $isDue = ($interval <= 1) || (($month - $start) >= 0 && (($month - $start) % $interval === 0));
+
+                if (!$isDue) {
+                    continue;
+                }
+
+                $dueCount++;
+
+                $log = $logRepo->findOneBy(['task' => $task, 'year' => $year, 'month' => $month]);
+                if ($log) {
+                    if ($log->getStatus() === 'FAIT') {
+                        $doneCount++;
+                    } elseif ($log->getStatus() === 'RESERVE') {
+                        $reserveCount++;
+                    }
+                }
+            }
+
+            $rate = $dueCount > 0 ? (int)round(($doneCount / $dueCount) * 100) : 0;
+
+            $summary[] = [
+                'month' => $month,
+                'dueCount' => $dueCount,
+                'doneCount' => $doneCount,
+                'reserveCount' => $reserveCount,
+                'todoCount' => max(0, $dueCount - $doneCount - $reserveCount),
+                'rate' => $rate,
+            ];
+        }
+
+        return $this->json([
+            'year' => $year,
+            'months' => $summary,
+        ]);
+    }
 }

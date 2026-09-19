@@ -6,6 +6,7 @@ import {
   CheckCircle,
   X,
   Lock,
+  BarChart3,
 } from "lucide-react";
 import { getApiKey } from "./syncService";
 
@@ -32,16 +33,21 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
   );
   const [pinInput, setPinInput] = useState("");
   const [authError, setAuthError] = useState(false);
-  const [activeTab, setActiveTab] = useState("reserves"); // "reserves" | "tasks"
+  const [activeTab, setActiveTab] = useState("summary"); // "summary" | "reserves" | "tasks"
 
-  // États pour les réserves
+  // Synthèse annuelle
+  const [summaryYear, setSummaryYear] = useState(new Date().getFullYear());
+  const [summaryData, setSummaryData] = useState([]);
+  const [loadingSummary, setLoadingSummary] = useState(false);
+
+  // Réserves
   const [reserves, setReserves] = useState([]);
   const [loadingReserves, setLoadingReserves] = useState(() => isAdminAuth);
   const [resolvingId, setResolvingId] = useState(null);
   const [resolutionNote, setResolutionNote] = useState("");
   const [deletePhoto, setDeletePhoto] = useState(true);
 
-  // États pour les tâches
+  // Tâches
   const [tasksList, setTasksList] = useState([]);
   const [newTitle, setNewTitle] = useState("");
   const [newCategory, setNewCategory] = useState("Sécurité Incendie");
@@ -50,7 +56,6 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
 
   const apiKey = getApiKey();
 
-  // 1. Authentification Admin via PIN (par défaut "2026", personnalisable)
   const handleLogin = (e) => {
     e.preventDefault();
     if (pinInput === "2026") {
@@ -62,7 +67,23 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
     }
   };
 
-  // Fonctions de rechargement manuel (après une action)
+  const refreshSummary = async (yearTarget = summaryYear) => {
+    setLoadingSummary(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/summary?year=${yearTarget}`, {
+        headers: { "X-API-KEY": apiKey },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSummaryData(data.months || []);
+      }
+    } catch (e) {
+      console.error("Erreur chargement synthèse :", e);
+    } finally {
+      setLoadingSummary(false);
+    }
+  };
+
   const refreshReserves = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/admin/reserves`, {
@@ -101,7 +122,7 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
     async function initData() {
       try {
         const d = new Date();
-        const [reservesRes, tasksRes] = await Promise.all([
+        const [reservesRes, tasksRes, summaryRes] = await Promise.all([
           fetch(`${API_BASE_URL}/admin/reserves`, {
             headers: { "X-API-KEY": apiKey },
           }),
@@ -109,6 +130,9 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
             `${API_BASE_URL}/tasks?year=${d.getFullYear()}&month=${d.getMonth() + 1}`,
             { headers: { "X-API-KEY": apiKey } }
           ),
+          fetch(`${API_BASE_URL}/admin/summary?year=${summaryYear}`, {
+            headers: { "X-API-KEY": apiKey },
+          }),
         ]);
 
         if (!isMounted) return;
@@ -120,6 +144,10 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
         if (tasksRes.ok) {
           const tasksData = await tasksRes.json();
           setTasksList(tasksData);
+        }
+        if (summaryRes.ok) {
+          const summaryResData = await summaryRes.json();
+          setSummaryData(summaryResData.months || []);
         }
       } catch (e) {
         console.error("Erreur initialisation admin :", e);
@@ -133,9 +161,8 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
     return () => {
       isMounted = false;
     };
-  }, [isAdminAuth, apiKey]);
+  }, [isAdminAuth, apiKey, summaryYear]);
 
-  // 4. Clôturer une réserve (passer en vert + supprimer photo)
   const handleResolve = async (logId) => {
     try {
       const res = await fetch(`${API_BASE_URL}/admin/reserves/${logId}/resolve`, {
@@ -155,6 +182,7 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
         setResolvingId(null);
         setResolutionNote("");
         await refreshReserves();
+        await refreshSummary();
         onDataChanged();
       }
     } catch (e) {
@@ -162,7 +190,6 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
     }
   };
 
-  // 5. Créer une nouvelle vérification
   const handleAddTask = async (e) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
@@ -185,6 +212,7 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
       if (res.ok) {
         setNewTitle("");
         await refreshTasks();
+        await refreshSummary();
         onDataChanged();
       }
     } catch (e) {
@@ -192,7 +220,6 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
     }
   };
 
-  // 6. Supprimer une tâche
   const handleDeleteTask = async (taskId, title) => {
     if (!window.confirm(`Supprimer définitivement la tâche « ${title} » et tout son historique ?`)) {
       return;
@@ -206,6 +233,7 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
 
       if (res.ok) {
         await refreshTasks();
+        await refreshSummary();
         onDataChanged();
       }
     } catch (e) {
@@ -213,7 +241,6 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
     }
   };
 
-  // Écran de verrouillage / saisie du code PIN
   if (!isAdminAuth) {
     return (
       <div style={modalOverlayStyle}>
@@ -258,8 +285,7 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
 
   return (
     <div style={modalOverlayStyle}>
-      <div style={{ ...modalCardStyle, maxWidth: "950px", height: "85vh", display: "flex", flexDirection: "column" }}>
-        
+      <div style={{ ...modalCardStyle, maxWidth: "980px", height: "88vh", display: "flex", flexDirection: "column" }}>
         {/* HEADER ADMIN */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: "14px", marginBottom: "16px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -276,6 +302,24 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
 
         {/* ONGLETS NAVIGATION */}
         <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
+          <button
+            onClick={() => setActiveTab("summary")}
+            style={{
+              padding: "8px 16px",
+              borderRadius: "8px",
+              border: "none",
+              cursor: "pointer",
+              fontWeight: "600",
+              fontSize: "0.9rem",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              backgroundColor: activeTab === "summary" ? "#0284c7" : "#f1f5f9",
+              color: activeTab === "summary" ? "#ffffff" : "#475569",
+            }}
+          >
+            <BarChart3 size={16} /> Synthèse annuelle
+          </button>
           <button
             onClick={() => setActiveTab("reserves")}
             style={{
@@ -308,7 +352,89 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
           </button>
         </div>
 
-        {/* CONTENU ONGLET 1 : RÉSOLUTIONS DE RÉSERVES */}
+        {/* CONTENU ONGLET 1 : SYNTHÈSE ANNUELLE */}
+        {activeTab === "summary" && (
+          <div style={{ flex: 1, overflowY: "auto", paddingRight: "4px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+              <h3 style={{ margin: 0, fontSize: "1rem", color: "#1e293b" }}>
+                Bilan de réalisation sur l'année {summaryYear}
+              </h3>
+              <div style={{ display: "flex", gap: "6px" }}>
+                <button
+                  onClick={() => {
+                    const next = summaryYear - 1;
+                    setSummaryYear(next);
+                    refreshSummary(next);
+                  }}
+                  style={{ ...primaryBtnStyle, backgroundColor: "#e2e8f0", color: "#334155" }}
+                >
+                  Année précédente
+                </button>
+                <button
+                  onClick={() => {
+                    const next = summaryYear + 1;
+                    setSummaryYear(next);
+                    refreshSummary(next);
+                  }}
+                  style={{ ...primaryBtnStyle, backgroundColor: "#e2e8f0", color: "#334155" }}
+                >
+                  Année suivante
+                </button>
+              </div>
+            </div>
+
+            {loadingSummary ? (
+              <p style={{ color: "#64748b" }}>Calcul des statistiques annuelles...</p>
+            ) : (
+              <div style={{ border: "1px solid #e2e8f0", borderRadius: "10px", overflow: "hidden" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+                  <thead>
+                    <tr style={{ background: "#f8fafc", textAlign: "left", borderBottom: "1px solid #e2e8f0" }}>
+                      <th style={{ padding: "10px 14px" }}>Mois</th>
+                      <th style={{ padding: "10px 14px" }}>Dues</th>
+                      <th style={{ padding: "10px 14px", color: "#16a34a" }}>Faites</th>
+                      <th style={{ padding: "10px 14px", color: "#d97706" }}>Réserves</th>
+                      <th style={{ padding: "10px 14px", color: "#ef4444" }}>Restantes</th>
+                      <th style={{ padding: "10px 14px", width: "220px" }}>Taux de réalisation</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summaryData.map((m) => (
+                      <tr key={m.month} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                        <td style={{ padding: "10px 14px", fontWeight: "600", color: "#1e293b" }}>
+                          {MONTH_NAMES[m.month - 1]}
+                        </td>
+                        <td style={{ padding: "10px 14px", fontWeight: "500" }}>{m.dueCount}</td>
+                        <td style={{ padding: "10px 14px", color: "#16a34a", fontWeight: "600" }}>{m.doneCount}</td>
+                        <td style={{ padding: "10px 14px", color: "#d97706", fontWeight: "600" }}>{m.reserveCount}</td>
+                        <td style={{ padding: "10px 14px", color: "#ef4444", fontWeight: "600" }}>{m.todoCount}</td>
+                        <td style={{ padding: "10px 14px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <div style={{ flex: 1, height: "8px", background: "#e2e8f0", borderRadius: "4px", overflow: "hidden" }}>
+                              <div
+                                style={{
+                                  width: `${m.rate}%`,
+                                  height: "100%",
+                                  background: m.rate === 100 ? "#16a34a" : m.rate >= 50 ? "#0284c7" : "#f59e0b",
+                                  borderRadius: "4px",
+                                }}
+                              />
+                            </div>
+                            <span style={{ minWidth: "35px", fontSize: "0.8rem", fontWeight: "bold", textAlign: "right" }}>
+                              {m.rate}%
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* CONTENU ONGLET 2 : RÉSOLUTIONS DE RÉSERVES */}
         {activeTab === "reserves" && (
           <div style={{ flex: 1, overflowY: "auto", paddingRight: "4px" }}>
             {loadingReserves ? (
@@ -354,7 +480,6 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
                       )}
                     </div>
 
-                    {/* BLOC FORMULAIRE DE RÉSOLUTION */}
                     {resolvingId === r.logId ? (
                       <div style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px dashed #fcd34d" }}>
                         <textarea
@@ -412,10 +537,9 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
           </div>
         )}
 
-        {/* CONTENU ONGLET 2 : GESTION DES TÂCHES */}
+        {/* CONTENU ONGLET 3 : GESTION DES TÂCHES */}
         {activeTab === "tasks" && (
           <div style={{ flex: 1, overflowY: "auto", paddingRight: "4px" }}>
-            {/* Formulaire d'ajout */}
             <form onSubmit={handleAddTask} style={{ background: "#f8fafc", padding: "14px", borderRadius: "10px", border: "1px solid #e2e8f0", marginBottom: "16px" }}>
               <h4 style={{ margin: "0 0 10px", fontSize: "0.95rem", color: "#1e293b", display: "flex", alignItems: "center", gap: "6px" }}>
                 <PlusCircle size={16} color="#0284c7" /> Ajouter un nouveau point de contrôle
@@ -466,7 +590,6 @@ export default function AdminDashboard({ onClose, onDataChanged, onPreviewImage 
               <button type="submit" style={primaryBtnStyle}>Ajouter la vérification</button>
             </form>
 
-            {/* Listing des tâches existantes */}
             <div style={{ border: "1px solid #e2e8f0", borderRadius: "10px", overflow: "hidden" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
                 <thead>
