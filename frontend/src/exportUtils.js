@@ -1,3 +1,6 @@
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+
 /**
  * Exporte un tableau de tâches au format CSV UTF-8
  */
@@ -46,7 +49,6 @@ export function exportTasksToCSV(tasks, monthName, year) {
     ].join(";");
   });
 
-  // Ajout du BOM UTF-8 (\uFEFF) pour qu'Excel ouvre le fichier avec les bons accents
   const csvContent = "\uFEFF" + [headers.join(";"), ...rows].join("\r\n");
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -60,4 +62,120 @@ export function exportTasksToCSV(tasks, monthName, year) {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+}
+
+/**
+ * Génère et télécharge un PDF conforme pour les commissions de sécurité
+ */
+export function exportTasksToPDF(tasks, monthName, year) {
+  if (!tasks || tasks.length === 0) {
+    alert("Aucune tâche à exporter.");
+    return;
+  }
+
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a4",
+  });
+
+  // Titre & En-tête
+  doc.setFontSize(16);
+  doc.setTextColor(15, 23, 42);
+  doc.text("Piscine Municipale d'Ambérieu", 14, 16);
+
+  doc.setFontSize(11);
+  doc.setTextColor(71, 85, 105);
+  doc.text(`Registre de maintenance préventive — ${monthName} ${year}`, 14, 23);
+
+  // Préparation des données du tableau
+  const tableData = tasks.map((t) => {
+    let dateStr = "—";
+    if (t.completedAt) {
+      try {
+        const d = new Date(t.completedAt);
+        dateStr = d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
+      } catch {
+        dateStr = "";
+      }
+    }
+
+    const statut =
+      t.status === "FAIT"
+        ? "FAIT"
+        : t.status === "RESERVE"
+        ? "RÉSERVE"
+        : "À FAIRE";
+
+    const details = [
+      t.updatedBy ? `Par: ${t.updatedBy} (${dateStr})` : "",
+      t.observation ? `Note: ${t.observation}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    return [t.category || "—", t.title, t.frequency, statut, details || "—"];
+  });
+
+  // Tableau stylisé
+  autoTable(doc, {
+    startY: 28,
+    head: [["Catégorie", "Point de contrôle", "Fréq.", "Statut", "Suivi / Observation"]],
+    body: tableData,
+    theme: "striped",
+    headStyles: {
+      fillColor: [2, 132, 199],
+      textColor: [255, 255, 255],
+      fontStyle: "bold",
+      fontSize: 8.5,
+    },
+    styles: {
+      fontSize: 8,
+      cellPadding: 2.5,
+      valign: "middle",
+      overflow: "linebreak",
+    },
+    columnStyles: {
+      0: { cellWidth: 32 },
+      1: { cellWidth: 60 },
+      2: { cellWidth: 20 },
+      3: { cellWidth: 20 },
+      4: { cellWidth: 58 },
+    },
+    didParseCell: (data) => {
+      if (data.section === "body" && data.column.index === 3) {
+        if (data.cell.raw === "FAIT") {
+          data.cell.styles.textColor = [22, 163, 74];
+          data.cell.styles.fontStyle = "bold";
+        } else if (data.cell.raw === "RÉSERVE") {
+          data.cell.styles.textColor = [217, 119, 6];
+          data.cell.styles.fontStyle = "bold";
+        } else {
+          data.cell.styles.textColor = [239, 68, 68];
+        }
+      }
+    },
+  });
+
+  // Bloc émargement en pied de page
+  const finalY = doc.lastAutoTable.finalY + 12;
+  const pageHeight = doc.internal.pageSize.height;
+
+  // Si on est trop bas sur la page, on ajoute une page pour la signature
+  if (finalY > pageHeight - 30) {
+    doc.addPage();
+    doc.setFontSize(9);
+    doc.setTextColor(71, 85, 105);
+    doc.text("Visa & Émargement de contrôle :", 14, 20);
+    doc.text("Signature du technicien : ___________________", 14, 35);
+    doc.text("Visa de la direction : ___________________", 110, 35);
+  } else {
+    doc.setFontSize(9);
+    doc.setTextColor(71, 85, 105);
+    doc.text("Visa & Émargement de contrôle :", 14, finalY);
+    doc.text("Signature du technicien : ___________________", 14, finalY + 15);
+    doc.text("Visa de la direction : ___________________", 110, finalY + 15);
+  }
+
+  doc.save(`registre_maintenance_${monthName.toLowerCase()}_${year}.pdf`);
 }

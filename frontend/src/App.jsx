@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { compressImage } from "./imageUtils";
 import AdminDashboard from "./AdminDashboard";
-import { exportTasksToCSV } from "./exportUtils";
+import { exportTasksToCSV, exportTasksToPDF } from "./exportUtils";
 
 const MONTH_NAMES = [
   "Janvier",
@@ -314,7 +314,10 @@ export default function App() {
             </p>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }} className="no-print">
+          <div
+            style={{ display: "flex", alignItems: "center", gap: "10px" }}
+            className="no-print"
+          >
             <div
               style={{
                 display: "flex",
@@ -498,7 +501,14 @@ export default function App() {
               gap: "16px",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                flexWrap: "wrap",
+              }}
+            >
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(Number(e.target.value))}
@@ -525,7 +535,10 @@ export default function App() {
               </select>
 
               {/* BOUTONS EXPORT CSV & IMPRESSION */}
-              <div style={{ display: "flex", gap: "8px", alignItems: "center" }} className="no-print">
+              <div
+                style={{ display: "flex", gap: "8px", alignItems: "center" }}
+                className="no-print"
+              >
                 <button
                   onClick={() =>
                     exportTasksToCSV(
@@ -553,7 +566,13 @@ export default function App() {
                 </button>
 
                 <button
-                  onClick={() => window.print()}
+                  onClick={() =>
+                    exportTasksToPDF(
+                      dueTasks,
+                      MONTH_NAMES[selectedMonth - 1],
+                      selectedYear,
+                    )
+                  }
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -567,9 +586,9 @@ export default function App() {
                     fontWeight: "600",
                     cursor: "pointer",
                   }}
-                  title="Imprimer ou enregistrer en PDF"
+                  title="Télécharger le registre au format PDF"
                 >
-                  <Printer size={16} /> Imprimer / PDF
+                  <Printer size={16} /> Exporter PDF
                 </button>
               </div>
             </div>
