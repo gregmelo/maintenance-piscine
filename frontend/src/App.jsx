@@ -21,6 +21,8 @@ import {
   Shield,
   Printer,
   FileSpreadsheet,
+  Search,
+  Filter,
 } from "lucide-react";
 import { compressImage } from "./imageUtils";
 import AdminDashboard from "./AdminDashboard";
@@ -82,6 +84,8 @@ export default function App() {
   const [keyInput, setKeyInput] = useState(() => getApiKey());
   const [showSettings, setShowSettings] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [onlyPending, setOnlyPending] = useState(false);
 
   const {
     needRefresh: [needRefresh],
@@ -230,7 +234,20 @@ export default function App() {
     window.location.reload();
   };
 
-  const groupedTasks = tasks.reduce((acc, task) => {
+  // Filtrage combiné : recherche textuelle et affichage des tâches restantes
+  const filteredTasks = tasks.filter((task) => {
+    const matchesSearch =
+      task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (task.category || "").toLowerCase().includes(searchQuery.toLowerCase());
+
+    const matchesPending = onlyPending
+      ? task.isDue && task.status !== "FAIT"
+      : true;
+
+    return matchesSearch && matchesPending;
+  });
+
+  const groupedTasks = filteredTasks.reduce((acc, task) => {
     acc[task.category] = acc[task.category] || [];
     acc[task.category].push(task);
     return acc;
@@ -680,6 +697,94 @@ export default function App() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* BARRE DE RECHERCHE ET FILTRES RAPIDES */}
+        <div
+          className="no-print"
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "10px",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: "16px",
+          }}
+        >
+          <div
+            style={{
+              position: "relative",
+              flex: "1 1 260px",
+              maxWidth: "420px",
+            }}
+          >
+            <Search
+              size={17}
+              color="#94a3b8"
+              style={{
+                position: "absolute",
+                left: "12px",
+                top: "50%",
+                transform: "translateY(-50%)",
+              }}
+            />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Rechercher un équipement, contrôle..."
+              style={{
+                width: "100%",
+                padding: "9px 12px 9px 38px",
+                borderRadius: "8px",
+                border: "1px solid #cbd5e1",
+                backgroundColor: "#ffffff",
+                fontSize: "0.88rem",
+                boxSizing: "border-box",
+                outline: "none",
+              }}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                style={{
+                  position: "absolute",
+                  right: "10px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  color: "#94a3b8",
+                  cursor: "pointer",
+                  padding: "2px",
+                }}
+              >
+                <X size={15} />
+              </button>
+            )}
+          </div>
+
+          <button
+            onClick={() => setOnlyPending(!onlyPending)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "8px 14px",
+              borderRadius: "8px",
+              border: onlyPending ? "1px solid #0284c7" : "1px solid #cbd5e1",
+              backgroundColor: onlyPending ? "#e0f2fe" : "#ffffff",
+              color: onlyPending ? "#0369a1" : "#475569",
+              fontSize: "0.85rem",
+              fontWeight: "600",
+              cursor: "pointer",
+            }}
+          >
+            <Filter size={15} />
+            {onlyPending
+              ? "Affichage : Restantes à traiter"
+              : "Affichage : Toutes les vérifications"}
+          </button>
         </div>
 
         {/* CATÉGORIES */}
