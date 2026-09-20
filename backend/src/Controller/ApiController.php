@@ -435,4 +435,23 @@ class ApiController extends AbstractController
 
         return $this->json(['success' => true, 'message' => 'Code PIN mis à jour avec succès']);
     }
+
+    #[Route('/admin/backup-db', name: 'api_admin_backup_db', methods: ['GET'])]
+    public function backupDatabase(Request $request): Response
+    {
+        if (!$this->isAuthorized($request)) {
+            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $dbPath = $this->getParameter('kernel.project_dir') . '/var/data.db';
+
+        if (!file_exists($dbPath)) {
+            return $this->json(['error' => 'Fichier de base de données introuvable'], Response::HTTP_NOT_FOUND);
+        }
+
+        $dateStr = date('Y-m-d_H-i');
+        $fileName = "backup_piscine_{$dateStr}.db";
+
+        return $this->file($dbPath, $fileName, \Symfony\Component\HttpFoundation\ResponseHeaderBag::DISPOSITION_ATTACHMENT);
+    }
 }

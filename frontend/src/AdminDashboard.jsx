@@ -8,6 +8,7 @@ import {
   Lock,
   BarChart3,
   KeyRound,
+  Database,
 } from "lucide-react";
 import { getApiKey } from "./syncService";
 
@@ -187,6 +188,27 @@ export default function AdminDashboard({
     }
   };
 
+  const handleDownloadBackup = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/backup-db`, {
+        headers: { "X-API-KEY": apiKey },
+      });
+      if (!res.ok) throw new Error("Erreur de sauvegarde");
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `backup_maintenance_${new Date().toISOString().slice(0, 10)}.db`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      alert("Erreur lors du téléchargement de la base de données.");
+    }
+  };
+
   useEffect(() => {
     if (!isAdminAuth) return;
 
@@ -320,12 +342,15 @@ export default function AdminDashboard({
       console.error("Erreur suppression tâche :", e);
     }
   };
+
+  // Ferme la modale et réinitialise la session admin
   const handleClose = () => {
-    // Supprime la session admin pour réclamer le code PIN à la prochaine visite
     sessionStorage.removeItem("pool_admin_token");
     setIsAdminAuth(false);
     onClose();
   };
+
+  // Écran de verrouillage / saisie du PIN
   if (!isAdminAuth) {
     return (
       <div style={modalOverlayStyle}>
@@ -1012,8 +1037,7 @@ export default function AdminDashboard({
                   gap: "6px",
                 }}
               >
-                <PlusCircle size={16} color="#0284c7" /> Ajouter un nouveau
-                point de contrôle
+                <PlusCircle size={16} color="#0284c7" /> Ajouter un nouveau point de contrôle
               </h4>
               <div
                 style={{
@@ -1211,8 +1235,7 @@ export default function AdminDashboard({
                   gap: "8px",
                 }}
               >
-                <KeyRound size={18} color="#0284c7" /> Modifier le code PIN
-                Administrateur
+                <KeyRound size={18} color="#0284c7" /> Modifier le code PIN Administrateur
               </h3>
               <p
                 style={{
@@ -1221,8 +1244,7 @@ export default function AdminDashboard({
                   margin: "0 0 16px",
                 }}
               >
-                Le code PIN protège l'accès à ce panneau de contrôle et au
-                registre des anomalies.
+                Le code PIN protège l'accès à ce panneau de contrôle et au registre des anomalies.
               </p>
 
               {pinChangeMsg.text && (
@@ -1272,6 +1294,50 @@ export default function AdminDashboard({
                   Enregistrer le nouveau code PIN
                 </button>
               </form>
+
+              {/* SAUVEGARDE DIRECTE SQLITE */}
+              <div
+                style={{
+                  marginTop: "24px",
+                  paddingTop: "18px",
+                  borderTop: "1px solid #e2e8f0",
+                }}
+              >
+                <h4
+                  style={{
+                    margin: "0 0 6px",
+                    fontSize: "0.95rem",
+                    color: "#1e293b",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <Database size={17} color="#0284c7" /> Sauvegarde de la base de données
+                </h4>
+                <p
+                  style={{
+                    fontSize: "0.82rem",
+                    color: "#64748b",
+                    margin: "0 0 12px",
+                  }}
+                >
+                  Télécharge une copie instantanée du fichier SQLite contenant tout l'historique des vérifications.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleDownloadBackup}
+                  style={{
+                    ...primaryBtnStyle,
+                    backgroundColor: "#059669",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <Database size={15} /> Télécharger la sauvegarde (.db)
+                </button>
+              </div>
             </div>
           </div>
         )}
