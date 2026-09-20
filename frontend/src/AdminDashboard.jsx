@@ -1092,77 +1092,98 @@ export default function AdminDashboard({
               </button>
             </form>
 
+            {/* Listing des tâches existantes sous forme de Cards */}
             <div
               style={{
-                border: "1px solid #e2e8f0",
-                borderRadius: "10px",
-                overflow: "hidden",
+                display: "flex",
+                flexDirection: "column",
+                gap: "10px",
+                marginTop: "12px",
               }}
             >
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: "0.85rem",
-                }}
-              >
-                <thead>
-                  <tr
-                    style={{
-                      background: "#f8fafc",
-                      textAlign: "left",
-                      borderBottom: "1px solid #e2e8f0",
-                    }}
-                  >
-                    <th style={{ padding: "10px 14px" }}>Contrôle</th>
-                    <th style={{ padding: "10px 14px" }}>Catégorie</th>
-                    <th style={{ padding: "10px 14px" }}>Fréquence</th>
-                    <th style={{ padding: "10px 14px", textAlign: "right" }}>
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tasksList.map((t) => (
-                    <tr
-                      key={t.id}
-                      style={{ borderBottom: "1px solid #f1f5f9" }}
+              {tasksList.map((t) => (
+                <div
+                  key={t.id}
+                  style={{
+                    backgroundColor: "#ffffff",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "10px",
+                    padding: "12px 14px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: "12px",
+                    boxShadow: "0 1px 2px rgba(0, 0, 0, 0.03)",
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        flexWrap: "wrap",
+                        marginBottom: "4px",
+                      }}
                     >
-                      <td
+                      <span
                         style={{
-                          padding: "10px 14px",
-                          fontWeight: "500",
-                          color: "#1e293b",
+                          fontSize: "0.72rem",
+                          fontWeight: "600",
+                          backgroundColor: "#f1f5f9",
+                          color: "#475569",
+                          padding: "2px 8px",
+                          borderRadius: "6px",
                         }}
                       >
-                        {t.title}
-                      </td>
-                      <td style={{ padding: "10px 14px", color: "#64748b" }}>
                         {t.category}
-                      </td>
-                      <td style={{ padding: "10px 14px", color: "#64748b" }}>
+                      </span>
+                      <span
+                        style={{
+                          fontSize: "0.72rem",
+                          fontWeight: "600",
+                          backgroundColor: "#e0f2fe",
+                          color: "#0369a1",
+                          padding: "2px 8px",
+                          borderRadius: "6px",
+                        }}
+                      >
                         {t.frequency}
-                      </td>
-                      <td style={{ padding: "10px 14px", textAlign: "right" }}>
-                        <button
-                          onClick={() => handleDeleteTask(t.id, t.title)}
-                          style={{
-                            border: "none",
-                            background: "#fee2e2",
-                            color: "#ef4444",
-                            padding: "6px 8px",
-                            borderRadius: "6px",
-                            cursor: "pointer",
-                          }}
-                          title="Supprimer la vérification"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "0.92rem",
+                        fontWeight: "500",
+                        color: "#0f172a",
+                        lineHeight: "1.35",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      {t.title}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => handleDeleteTask(t.id, t.title)}
+                    style={{
+                      border: "none",
+                      backgroundColor: "#fee2e2",
+                      color: "#ef4444",
+                      padding: "8px",
+                      borderRadius: "8px",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                    title="Supprimer la vérification"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
         )}
