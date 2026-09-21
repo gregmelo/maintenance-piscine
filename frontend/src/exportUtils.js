@@ -14,9 +14,9 @@ function toText(val) {
 }
 
 /**
- * Exporte un tableau de tâches au format CSV UTF-8
+ * Exporte un tableau de tâches au format Excel
  */
-export function exportTasksToCSV(tasks, monthName, year) {
+export function exportTasksToExcel(tasks, monthName, year) {
   if (!tasks || tasks.length === 0) {
     alert("Aucune tâche à exporter.");
     return;

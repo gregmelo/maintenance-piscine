@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import { compressImage } from "./imageUtils";
 import AdminDashboard from "./AdminDashboard";
-import { exportTasksToCSV, exportTasksToPDF } from "./exportUtils";
+import { exportTasksToExcel, exportTasksToPDF } from "./exportUtils";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
 const API_BASE_URL = "https://vericelgregory.alwaysdata.net/piscine/api";
@@ -622,14 +622,14 @@ export default function App() {
                 ))}
               </select>
 
-              {/* BOUTONS EXPORT CSV & PDF */}
+              {/* BOUTONS EXPORT Excel & PDF */}
               <div
                 style={{ display: "flex", gap: "8px", alignItems: "center" }}
                 className="no-print"
               >
                 <button
                   onClick={() =>
-                    exportTasksToCSV(
+                    exportTasksToExcel(
                       dueTasks,
                       MONTH_NAMES[selectedMonth - 1],
                       selectedYear,
@@ -648,9 +648,9 @@ export default function App() {
                     fontWeight: "600",
                     cursor: "pointer",
                   }}
-                  title="Exporter le registre en fichier CSV / Excel"
+                  title="Exporter le registre en fichier Excel / Excel"
                 >
-                  <FileSpreadsheet size={16} /> Exporter CSV
+                  <FileSpreadsheet size={16} /> Exporter Excel
                 </button>
 
                 <button
