@@ -6,101 +6,98 @@ use App\Entity\MaintenanceTask;
 use App\Entity\TaskLog;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Routing\Annotation\Route;
 
-#[Route('/api')]
+#[Route('/api', name: 'api_')]
 class ApiController extends AbstractController
 {
-    public function __construct(
-        #[Autowire('%env(APP_API_KEY)%')]
-        private string $apiKey
-    ) {}
-
-    /**
-     * Vérification de la clé d'API
-     */
     private function isAuthorized(Request $request): bool
     {
-        $providedKey = $request->headers->get('X-API-KEY');
-        return $providedKey !== null && hash_equals($this->apiKey, $providedKey);
+        $apiKey = $request->headers->get('X-API-KEY');
+        $expectedKey = $_ENV['APP_API_KEY'] ?? 'piscine-amberieu-secret-key-2026';
+
+        return $apiKey === $expectedKey;
     }
 
-    #[Route('/tasks', name: 'api_tasks_list', methods: ['GET'])]
-    public function getTasks(EntityManagerInterface $em, Request $request): JsonResponse
+    #[Route('/tasks', name: 'tasks_list', methods: ['GET'])]
+    public function getTasks(Request $request, EntityManagerInterface $em): JsonResponse
     {
         if (!$this->isAuthorized($request)) {
             return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
         }
 
-        $year = (int) $request->query->get('year', date('Y'));
-        $month = (int) $request->query->get('month', date('n'));
+        $year = (int)$request->query->get('year', (int)date('Y'));
+        $month = (int)$request->query->get('month', (int)date('n'));
 
         $tasks = $em->getRepository(MaintenanceTask::class)->findAll();
-        $logs = $em->getRepository(TaskLog::class)->findBy(['year' => $year, 'month' => $month]);
-
-        $logMap = [];
-        foreach ($logs as $log) {
-            $logMap[$log->getTask()->getId()] = $log;
-        }
+        $logRepo = $em->getRepository(TaskLog::class);
 
         $result = [];
         foreach ($tasks as $task) {
-            $interval = $task->getIntervalMonths();
             $start = $task->getStartMonth();
+            $interval = $task->getIntervalMonths();
+            $isDue = ($interval <= 1) || (($month - $start) >= 0 && (($month - $start) % $interval === 0));
 
-            // Formule pour le modulo positif
-            $isDue = ((($month - $start) % $interval) + $interval) % $interval === 0;
-
-            $currentLog = $logMap[$task->getId()] ?? null;
+            $log = $logRepo->findOneBy([
+                'task' => $task,
+                'year' => $year,
+                'month' => $month,
+            ]);
 
             $result[] = [
                 'id' => $task->getId(),
                 'title' => $task->getTitle(),
-                'category' => $task->getCategory()->getName(),
+                'category' => $task->getCategory(),
                 'frequency' => $task->getFrequency(),
+                'startMonth' => $task->getStartMonth(),
                 'isDue' => $isDue,
-                'status' => $currentLog ? $currentLog->getStatus() : 'A_FAIRE',
-                'observation' => $currentLog ? $currentLog->getObservation() : '',
-                'updatedBy' => $currentLog ? $currentLog->getUpdatedBy() : null,
-                'updatedAt' => $currentLog ? $currentLog->getUpdatedAt()->format(\DateTimeInterface::ATOM) : null,
-                'completedAt' => $currentLog?->getCompletedAt()?->format(\DateTimeInterface::ATOM),
-                'photoUrl' => $currentLog?->getPhotoUrl(),
+                'status' => $log ? $log->getStatus() : 'A_FAIRE',
+                'updatedBy' => $log ? $log->getUpdatedBy() : null,
+                'completedAt' => ($log && $log->getCompletedAt()) ? $log->getCompletedAt()->format('c') : null,
+                'observation' => $log ? $log->getObservation() : '',
+                'photoUrl' => $log ? $log->getPhotoUrl() : null,
             ];
         }
 
         return $this->json($result);
     }
 
-    #[Route('/tasks/sync', name: 'api_tasks_sync', methods: ['POST'])]
+    #[Route('/tasks/sync', name: 'tasks_sync', methods: ['POST'])]
     public function syncTasks(Request $request, EntityManagerInterface $em): JsonResponse
     {
         if (!$this->isAuthorized($request)) {
             return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
         }
 
-        $data = json_decode($request->getContent(), true);
-        if (!is_array($data)) {
-            return $this->json(['error' => 'Données JSON invalides'], Response::HTTP_BAD_REQUEST);
-        }
+        $data = json_decode($request->getContent(), true) ?? [];
+        $updates = $data['updates'] ?? [];
 
         $taskRepo = $em->getRepository(MaintenanceTask::class);
         $logRepo = $em->getRepository(TaskLog::class);
+        $uploadDir = $this->getParameter('kernel.project_dir') . '/public/uploads/tasks';
 
-        foreach ($data as $item) {
-            $taskId = $item['taskId'] ?? $item['id'] ?? null;
-            if (!$taskId) continue;
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0777, true);
+        }
 
-            $task = $taskRepo->find($taskId);
-            if (!$task) continue;
+        foreach ($updates as $item) {
+            $task = $taskRepo->find((int)($item['taskId'] ?? 0));
+            if (!$task) {
+                continue;
+            }
 
-            $year = (int)$item['year'];
-            $month = (int)$item['month'];
+            $year = (int)($item['year'] ?? date('Y'));
+            $month = (int)($item['month'] ?? date('n'));
 
-            $log = $logRepo->findOneBy(['task' => $task, 'year' => $year, 'month' => $month]);
+            $log = $logRepo->findOneBy([
+                'task' => $task,
+                'year' => $year,
+                'month' => $month,
+            ]);
+
             if (!$log) {
                 $log = new TaskLog();
                 $log->setTask($task);
@@ -109,176 +106,48 @@ class ApiController extends AbstractController
                 $em->persist($log);
             }
 
-            $log->setStatus($item['status']);
+            $log->setStatus($item['status'] ?? 'A_FAIRE');
             $log->setObservation($item['observation'] ?? null);
-            $log->setUpdatedAt(new \DateTimeImmutable());
+            $log->setUpdatedBy($item['updatedBy'] ?? null);
 
-            if (in_array($item['status'], ['FAIT', 'RESERVE'])) {
-                $log->setUpdatedBy($item['updatedBy'] ?? 'Agent');
-                if (!empty($item['completedAt'])) {
-                    try {
-                        $log->setCompletedAt(new \DateTimeImmutable($item['completedAt']));
-                    } catch (\Exception) {
-                        $log->setCompletedAt(new \DateTimeImmutable());
-                    }
-                } elseif ($log->getCompletedAt() === null) {
-                    $log->setCompletedAt(new \DateTimeImmutable());
+            if (!empty($item['completedAt'])) {
+                try {
+                    $log->setCompletedAt(new \DateTime($item['completedAt']));
+                } catch (\Exception) {
+                    $log->setCompletedAt(new \DateTime());
                 }
             } else {
-                $log->setUpdatedBy(null);
                 $log->setCompletedAt(null);
             }
 
-            // Gestion de la photo envoyée en base64 pour les réserves
-            if (!empty($item['photoBase64'])) {
-                $uploadDir = $this->getParameter('kernel.project_dir') . '/public/uploads/tasks';
-                if (!is_dir($uploadDir)) {
-                    mkdir($uploadDir, 0775, true);
-                }
+            // Gestion de la photo base64
+            if (!empty($item['photoBase64']) && str_starts_with($item['photoBase64'], 'data:image/')) {
+                $parts = explode(',', $item['photoBase64']);
+                if (count($parts) === 2) {
+                    $decoded = base64_decode($parts[1]);
+                    $fileName = 'task_' . $task->getId() . '_' . $year . '_' . $month . '_' . uniqid() . '.jpg';
+                    $filePath = $uploadDir . '/' . $fileName;
 
-                if (preg_match('/^data:image\/(\w+);base64,/', $item['photoBase64'], $type)) {
-                    $dataImg = substr($item['photoBase64'], strpos($item['photoBase64'], ',') + 1);
-                    $dataImg = base64_decode($dataImg);
-
-                    if ($dataImg !== false) {
-                        $extension = strtolower($type[1]);
-                        $filename = sprintf('task_%d_%d_%d_%s.%s', $task->getId(), $year, $month, uniqid(), $extension);
-                        file_put_contents($uploadDir . '/' . $filename, $dataImg);
-                        $log->setPhotoUrl('/uploads/tasks/' . $filename);
+                    if ($log->getPhotoUrl()) {
+                        $oldFile = $this->getParameter('kernel.project_dir') . '/public' . $log->getPhotoUrl();
+                        if (file_exists($oldFile)) {
+                            @unlink($oldFile);
+                        }
                     }
+
+                    file_put_contents($filePath, $decoded);
+                    $log->setPhotoUrl('/uploads/tasks/' . $fileName);
                 }
             }
         }
 
         $em->flush();
 
-        return $this->json(['status' => 'success', 'syncedCount' => count($data)]);
+        return $this->json(['success' => true, 'processed' => count($updates)]);
     }
 
-    #[Route('/admin/reserves', name: 'api_admin_reserves', methods: ['GET'])]
-    public function getAdminReserves(Request $request, EntityManagerInterface $em): JsonResponse
-    {
-        if (!$this->isAuthorized($request)) {
-            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
-        }
-
-        $logRepo = $em->getRepository(TaskLog::class);
-        $reserves = $logRepo->findBy(['status' => 'RESERVE'], ['year' => 'DESC', 'month' => 'DESC', 'updatedAt' => 'DESC']);
-
-        $data = [];
-        foreach ($reserves as $log) {
-            $task = $log->getTask();
-            $data[] = [
-                'logId' => $log->getId(),
-                'taskId' => $task->getId(),
-                'taskTitle' => $task->getTitle(),
-                'category' => $task->getCategory()?->getName(),
-                'frequency' => $task->getFrequency(),
-                'year' => $log->getYear(),
-                'month' => $log->getMonth(),
-                'observation' => $log->getObservation(),
-                'updatedBy' => $log->getUpdatedBy(),
-                'completedAt' => $log->getCompletedAt()?->format(\DateTimeInterface::ATOM),
-                'photoUrl' => $log->getPhotoUrl(),
-            ];
-        }
-
-        return $this->json($data);
-    }
-
-    #[Route('/admin/reserves/{id}/resolve', name: 'api_admin_resolve_reserve', methods: ['POST'])]
-    public function resolveReserve(int $id, Request $request, EntityManagerInterface $em): JsonResponse
-    {
-        if (!$this->isAuthorized($request)) {
-            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
-        }
-
-        $log = $em->getRepository(TaskLog::class)->find($id);
-        if (!$log) {
-            return $this->json(['error' => 'Enregistrement introuvable'], Response::HTTP_NOT_FOUND);
-        }
-
-        $body = json_decode($request->getContent(), true) ?? [];
-        $deletePhoto = $body['deletePhoto'] ?? true;
-        $resolutionNote = trim($body['resolutionNote'] ?? '');
-        $adminUser = $body['user'] ?? 'Grégory';
-
-        // 1. Suppression du fichier physique de la photo sur le disque si demandé
-        if ($deletePhoto && $log->getPhotoUrl()) {
-            $filePath = $this->getParameter('kernel.project_dir') . '/public' . $log->getPhotoUrl();
-            if (file_exists($filePath)) {
-                unlink($filePath);
-            }
-            $log->setPhotoUrl(null);
-        }
-
-        // 2. Mise à jour de l'observation
-        if (!empty($resolutionNote)) {
-            $initialNote = $log->getObservation() ? $log->getObservation() . " | " : "";
-            $log->setObservation($initialNote . "[Résolu par " . $adminUser . " : " . $resolutionNote . "]");
-        }
-
-        // 3. Passage au statut FAIT (vert)
-        $log->setStatus('FAIT');
-        $log->setUpdatedBy($adminUser);
-        $log->setCompletedAt(new \DateTimeImmutable());
-        $log->setUpdatedAt(new \DateTimeImmutable());
-
-        $em->flush();
-
-        return $this->json(['status' => 'success', 'message' => 'Réserve levée avec succès']);
-    }
-
-   #[Route('/admin/tasks', name: 'api_admin_add_task', methods: ['POST'])]
-    public function addTask(Request $request, EntityManagerInterface $em): JsonResponse
-    {
-        if (!$this->isAuthorized($request)) {
-            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
-        }
-
-        $body = json_decode($request->getContent(), true);
-        if (empty($body['title']) || empty($body['category'])) {
-            return $this->json(['error' => 'Titre et catégorie obligatoires'], Response::HTTP_BAD_REQUEST);
-        }
-
-        // 1. Récupérer ou créer la catégorie
-        $categoryRepo = $em->getRepository(\App\Entity\Category::class);
-        $category = $categoryRepo->findOneBy(['name' => $body['category']]);
-        if (!$category) {
-            $category = new \App\Entity\Category();
-            $category->setName($body['category']);
-            $em->persist($category);
-        }
-
-        // 2. Déduire startMonth et intervalMonths selon la fréquence choisie
-        $frequency = $body['frequency'] ?? 'Mensuel';
-        $intervalMonths = 1;
-        $startMonth = isset($body['startMonth']) ? (int)$body['startMonth'] : 1;
-
-        if ($frequency === 'Trimestriel') {
-            $intervalMonths = 3;
-        } elseif ($frequency === 'Semestriel') {
-            $intervalMonths = 6;
-        } elseif ($frequency === 'Annuel') {
-            $intervalMonths = 12;
-        }
-
-        // 3. Créer la tâche
-        $task = new MaintenanceTask();
-        $task->setTitle($body['title']);
-        $task->setCategory($category);
-        $task->setFrequency($frequency);
-        $task->setStartMonth($startMonth);
-        $task->setIntervalMonths($intervalMonths);
-
-        $em->persist($task);
-        $em->flush();
-
-        return $this->json(['status' => 'success', 'taskId' => $task->getId()], Response::HTTP_CREATED);
-    }
-
-    #[Route('/admin/tasks/{id}', name: 'api_admin_delete_task', methods: ['DELETE'])]
-    public function deleteTask(int $id, Request $request, EntityManagerInterface $em): JsonResponse
+    #[Route('/tasks/{id}/history', name: 'task_history', methods: ['GET'])]
+    public function getTaskHistory(int $id, Request $request, EntityManagerInterface $em): JsonResponse
     {
         if (!$this->isAuthorized($request)) {
             return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
@@ -289,85 +158,37 @@ class ApiController extends AbstractController
             return $this->json(['error' => 'Tâche introuvable'], Response::HTTP_NOT_FOUND);
         }
 
-        // Supprimer d'abord les logs associés à cette tâche pour éviter les contraintes de clé étrangère
-        $logRepo = $em->getRepository(TaskLog::class);
-        $logs = $logRepo->findBy(['task' => $task]);
+        $logs = $em->getRepository(TaskLog::class)->findBy(
+            ['task' => $task],
+            ['year' => 'DESC', 'month' => 'DESC']
+        );
+
+        $history = [];
         foreach ($logs as $log) {
-            if ($log->getPhotoUrl()) {
-                $filePath = $this->getParameter('kernel.project_dir') . '/public' . $log->getPhotoUrl();
-                if (file_exists($filePath)) {
-                    unlink($filePath);
-                }
-            }
-            $em->remove($log);
-        }
-
-        $em->remove($task);
-        $em->flush();
-
-        return $this->json(['status' => 'success', 'message' => 'Tâche supprimée avec succès']);
-    }
-
-    #[Route('/admin/summary', name: 'api_admin_summary', methods: ['GET'])]
-    public function getAdminSummary(Request $request, EntityManagerInterface $em): JsonResponse
-    {
-        if (!$this->isAuthorized($request)) {
-            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
-        }
-
-        $year = (int)$request->query->get('year', (int)date('Y'));
-
-        $tasks = $em->getRepository(MaintenanceTask::class)->findAll();
-        $logRepo = $em->getRepository(TaskLog::class);
-
-        $summary = [];
-
-        for ($month = 1; $month <= 12; $month++) {
-            $dueCount = 0;
-            $doneCount = 0;
-            $reserveCount = 0;
-
-            foreach ($tasks as $task) {
-                // Vérifier si la tâche est due pour ce mois
-                $start = $task->getStartMonth();
-                $interval = $task->getIntervalMonths();
-                $isDue = ($interval <= 1) || (($month - $start) >= 0 && (($month - $start) % $interval === 0));
-
-                if (!$isDue) {
-                    continue;
-                }
-
-                $dueCount++;
-
-                $log = $logRepo->findOneBy(['task' => $task, 'year' => $year, 'month' => $month]);
-                if ($log) {
-                    if ($log->getStatus() === 'FAIT') {
-                        $doneCount++;
-                    } elseif ($log->getStatus() === 'RESERVE') {
-                        $reserveCount++;
-                    }
-                }
-            }
-
-            $rate = $dueCount > 0 ? (int)round(($doneCount / $dueCount) * 100) : 0;
-
-            $summary[] = [
-                'month' => $month,
-                'dueCount' => $dueCount,
-                'doneCount' => $doneCount,
-                'reserveCount' => $reserveCount,
-                'todoCount' => max(0, $dueCount - $doneCount - $reserveCount),
-                'rate' => $rate,
+            $history[] = [
+                'logId' => $log->getId(),
+                'year' => $log->getYear(),
+                'month' => $log->getMonth(),
+                'status' => $log->getStatus(),
+                'observation' => $log->getObservation(),
+                'updatedBy' => $log->getUpdatedBy(),
+                'completedAt' => $log->getCompletedAt() ? $log->getCompletedAt()->format('c') : null,
+                'photoUrl' => $log->getPhotoUrl(),
             ];
         }
 
         return $this->json([
-            'year' => $year,
-            'months' => $summary,
+            'task' => [
+                'id' => $task->getId(),
+                'title' => $task->getTitle(),
+                'category' => $task->getCategory(),
+                'frequency' => $task->getFrequency(),
+            ],
+            'history' => $history,
         ]);
     }
 
-    #[Route('/admin/verify-pin', name: 'api_admin_verify_pin', methods: ['POST'])]
+    #[Route('/admin/verify-pin', name: 'admin_verify_pin', methods: ['POST'])]
     public function verifyAdminPin(Request $request, EntityManagerInterface $em): JsonResponse
     {
         if (!$this->isAuthorized($request)) {
@@ -377,7 +198,6 @@ class ApiController extends AbstractController
         $data = json_decode($request->getContent(), true) ?? [];
         $submittedPin = (string)($data['pin'] ?? '');
 
-        // Vérifier dans la base SQLite via DBAL si une table app_config existe
         $conn = $em->getConnection();
         $conn->executeStatement("
             CREATE TABLE IF NOT EXISTS app_config (
@@ -388,13 +208,11 @@ class ApiController extends AbstractController
 
         $storedPin = $conn->fetchOne("SELECT config_value FROM app_config WHERE config_key = 'admin_pin'");
         if (!$storedPin) {
-            // PIN par défaut si non initialisé
             $storedPin = '2026';
             $conn->executeStatement("INSERT INTO app_config (config_key, config_value) VALUES ('admin_pin', '2026')");
         }
 
         if ($submittedPin === (string)$storedPin) {
-            // Génération d'un token de session éphémère simple
             $token = bin2hex(random_bytes(16));
             return $this->json(['valid' => true, 'token' => $token]);
         }
@@ -402,7 +220,7 @@ class ApiController extends AbstractController
         return $this->json(['valid' => false, 'error' => 'Code PIN incorrect'], Response::HTTP_FORBIDDEN);
     }
 
-    #[Route('/admin/update-pin', name: 'api_admin_update_pin', methods: ['POST'])]
+    #[Route('/admin/update-pin', name: 'admin_update_pin', methods: ['POST'])]
     public function updateAdminPin(Request $request, EntityManagerInterface $em): JsonResponse
     {
         if (!$this->isAuthorized($request)) {
@@ -436,7 +254,324 @@ class ApiController extends AbstractController
         return $this->json(['success' => true, 'message' => 'Code PIN mis à jour avec succès']);
     }
 
-    #[Route('/admin/backup-db', name: 'api_admin_backup_db', methods: ['GET'])]
+    #[Route('/admin/summary', name: 'admin_summary', methods: ['GET'])]
+    public function getAnnualSummary(Request $request, EntityManagerInterface $em): JsonResponse
+    {
+        if (!$this->isAuthorized($request)) {
+            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $year = (int)$request->query->get('year', (int)date('Y'));
+        $tasks = $em->getRepository(MaintenanceTask::class)->findAll();
+        $logRepo = $em->getRepository(TaskLog::class);
+
+        $monthsSummary = [];
+
+        for ($m = 1; $m <= 12; $m++) {
+            $dueCount = 0;
+            $doneCount = 0;
+            $reserveCount = 0;
+
+            foreach ($tasks as $task) {
+                $start = $task->getStartMonth();
+                $interval = $task->getIntervalMonths();
+                $isDue = ($interval <= 1) || (($m - $start) >= 0 && (($m - $start) % $interval === 0));
+
+                if (!$isDue) continue;
+
+                $dueCount++;
+
+                $log = $logRepo->findOneBy([
+                    'task' => $task,
+                    'year' => $year,
+                    'month' => $m,
+                ]);
+
+                if ($log) {
+                    if ($log->getStatus() === 'FAIT') {
+                        $doneCount++;
+                    } elseif ($log->getStatus() === 'RESERVE') {
+                        $reserveCount++;
+                    }
+                }
+            }
+
+            $todoCount = max(0, $dueCount - $doneCount - $reserveCount);
+            $rate = $dueCount > 0 ? round(($doneCount / $dueCount) * 100) : 0;
+
+            $monthsSummary[] = [
+                'month' => $m,
+                'dueCount' => $dueCount,
+                'doneCount' => $doneCount,
+                'reserveCount' => $reserveCount,
+                'todoCount' => $todoCount,
+                'rate' => $rate,
+            ];
+        }
+
+        return $this->json([
+            'year' => $year,
+            'months' => $monthsSummary,
+        ]);
+    }
+
+    #[Route('/admin/annual-report', name: 'admin_annual_report', methods: ['GET'])]
+    public function getAnnualReport(Request $request, EntityManagerInterface $em): JsonResponse
+    {
+        if (!$this->isAuthorized($request)) {
+            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $year = (int)$request->query->get('year', (int)date('Y'));
+        $tasks = $em->getRepository(MaintenanceTask::class)->findAll();
+        $logRepo = $em->getRepository(TaskLog::class);
+
+        $reportMonths = [];
+
+        for ($m = 1; $m <= 12; $m++) {
+            $monthTasks = [];
+
+            foreach ($tasks as $task) {
+                $start = $task->getStartMonth();
+                $interval = $task->getIntervalMonths();
+                $isDue = ($interval <= 1) || (($m - $start) >= 0 && (($m - $start) % $interval === 0));
+
+                if (!$isDue) continue;
+
+                $log = $logRepo->findOneBy(['task' => $task, 'year' => $year, 'month' => $m]);
+
+                $monthTasks[] = [
+                    'id' => $task->getId(),
+                    'title' => $task->getTitle(),
+                    'category' => $task->getCategory(),
+                    'frequency' => $task->getFrequency(),
+                    'status' => $log ? $log->getStatus() : 'A_FAIRE',
+                    'updatedBy' => $log ? $log->getUpdatedBy() : null,
+                    'completedAt' => ($log && $log->getCompletedAt()) ? $log->getCompletedAt()->format('c') : null,
+                    'observation' => $log ? $log->getObservation() : '',
+                ];
+            }
+
+            $reportMonths[] = [
+                'month' => $m,
+                'tasks' => $monthTasks,
+            ];
+        }
+
+        return $this->json([
+            'year' => $year,
+            'months' => $reportMonths,
+        ]);
+    }
+
+    #[Route('/admin/reserves', name: 'admin_reserves_list', methods: ['GET'])]
+    public function getActiveReserves(Request $request, EntityManagerInterface $em): JsonResponse
+    {
+        if (!$this->isAuthorized($request)) {
+            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $reserves = $em->getRepository(TaskLog::class)->findBy(
+            ['status' => 'RESERVE'],
+            ['year' => 'DESC', 'month' => 'DESC']
+        );
+
+        $result = [];
+        foreach ($reserves as $log) {
+            $task = $log->getTask();
+            $result[] = [
+                'logId' => $log->getId(),
+                'taskId' => $task ? $task->getId() : null,
+                'taskTitle' => $task ? $task->getTitle() : 'Inconnue',
+                'category' => $task ? $task->getCategory() : 'Non classé',
+                'year' => $log->getYear(),
+                'month' => $log->getMonth(),
+                'observation' => $log->getObservation(),
+                'updatedBy' => $log->getUpdatedBy(),
+                'completedAt' => $log->getCompletedAt() ? $log->getCompletedAt()->format('c') : null,
+                'photoUrl' => $log->getPhotoUrl(),
+            ];
+        }
+
+        return $this->json($result);
+    }
+
+    #[Route('/admin/reserves/{id}/resolve', name: 'admin_resolve_reserve', methods: ['POST'])]
+    public function resolveReserve(int $id, Request $request, EntityManagerInterface $em): JsonResponse
+    {
+        if (!$this->isAuthorized($request)) {
+            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $log = $em->getRepository(TaskLog::class)->find($id);
+        if (!$log) {
+            return $this->json(['error' => 'Log introuvable'], Response::HTTP_NOT_FOUND);
+        }
+
+        $data = json_decode($request->getContent(), true) ?? [];
+        $deletePhoto = $data['deletePhoto'] ?? false;
+        $resolutionNote = trim($data['resolutionNote'] ?? '');
+        $user = $data['user'] ?? 'Responsable';
+
+        if ($deletePhoto && $log->getPhotoUrl()) {
+            $filePath = $this->getParameter('kernel.project_dir') . '/public' . $log->getPhotoUrl();
+            if (file_exists($filePath)) {
+                @unlink($filePath);
+            }
+            $log->setPhotoUrl(null);
+        }
+
+        $log->setStatus('FAIT');
+        $log->setUpdatedBy($user);
+        $log->setCompletedAt(new \DateTime());
+
+        if ($resolutionNote !== '') {
+            $existing = $log->getObservation() ? $log->getObservation() . ' | ' : '';
+            $log->setObservation($existing . '[Résolu : ' . $resolutionNote . ']');
+        }
+
+        $em->flush();
+
+        return $this->json(['success' => true]);
+    }
+
+    #[Route('/admin/tasks', name: 'admin_task_add', methods: ['POST'])]
+    public function addTask(Request $request, EntityManagerInterface $em): JsonResponse
+    {
+        if (!$this->isAuthorized($request)) {
+            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $data = json_decode($request->getContent(), true) ?? [];
+        $title = trim($data['title'] ?? '');
+        $category = trim($data['category'] ?? 'Sécurité');
+        $frequency = trim($data['frequency'] ?? 'Mensuel');
+        $startMonth = (int)($data['startMonth'] ?? 1);
+
+        if ($title === '') {
+            return $this->json(['error' => 'Le titre est obligatoire'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $task = new MaintenanceTask();
+        $task->setTitle($title);
+        $task->setCategory($category);
+        $task->setFrequency($frequency);
+        $task->setStartMonth($startMonth);
+
+        $em->persist($task);
+        $em->flush();
+
+        return $this->json(['success' => true, 'id' => $task->getId()]);
+    }
+
+    #[Route('/admin/tasks/{id}', name: 'admin_task_update', methods: ['PUT'])]
+    public function updateTask(int $id, Request $request, EntityManagerInterface $em): JsonResponse
+    {
+        if (!$this->isAuthorized($request)) {
+            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $task = $em->getRepository(MaintenanceTask::class)->find($id);
+        if (!$task) {
+            return $this->json(['error' => 'Tâche introuvable'], Response::HTTP_NOT_FOUND);
+        }
+
+        $data = json_decode($request->getContent(), true) ?? [];
+        if (isset($data['title']) && trim($data['title']) !== '') {
+            $task->setTitle(trim($data['title']));
+        }
+        if (isset($data['category'])) {
+            $task->setCategory($data['category']);
+        }
+        if (isset($data['frequency'])) {
+            $task->setFrequency($data['frequency']);
+        }
+        if (isset($data['startMonth'])) {
+            $task->setStartMonth((int)$data['startMonth']);
+        }
+
+        $em->flush();
+
+        return $this->json(['success' => true, 'message' => 'Tâche mise à jour']);
+    }
+
+    #[Route('/admin/tasks/{id}', name: 'admin_task_delete', methods: ['DELETE'])]
+    public function deleteTask(int $id, Request $request, EntityManagerInterface $em): JsonResponse
+    {
+        if (!$this->isAuthorized($request)) {
+            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $task = $em->getRepository(MaintenanceTask::class)->find($id);
+        if (!$task) {
+            return $this->json(['error' => 'Tâche introuvable'], Response::HTTP_NOT_FOUND);
+        }
+
+        $logs = $em->getRepository(TaskLog::class)->findBy(['task' => $task]);
+        foreach ($logs as $log) {
+            if ($log->getPhotoUrl()) {
+                $filePath = $this->getParameter('kernel.project_dir') . '/public' . $log->getPhotoUrl();
+                if (file_exists($filePath)) {
+                    @unlink($filePath);
+                }
+            }
+            $em->remove($log);
+        }
+
+        $em->remove($task);
+        $em->flush();
+
+        return $this->json(['success' => true]);
+    }
+
+    #[Route('/admin/cleanup-photos', name: 'admin_cleanup_photos', methods: ['POST'])]
+    public function cleanupOrphanPhotos(Request $request, EntityManagerInterface $em): JsonResponse
+    {
+        if (!$this->isAuthorized($request)) {
+            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $uploadDir = $this->getParameter('kernel.project_dir') . '/public/uploads/tasks';
+        if (!is_dir($uploadDir)) {
+            return $this->json(['deletedCount' => 0, 'freedSpace' => 0]);
+        }
+
+        $logs = $em->getRepository(TaskLog::class)->findAll();
+        $usedPhotos = [];
+        foreach ($logs as $l) {
+            if ($l->getPhotoUrl()) {
+                $usedPhotos[] = basename($l->getPhotoUrl());
+            }
+        }
+
+        $files = scandir($uploadDir);
+        $deletedCount = 0;
+        $freedBytes = 0;
+
+        foreach ($files as $file) {
+            if ($file === '.' || $file === '..') {
+                continue;
+            }
+            if (!in_array($file, $usedPhotos, true)) {
+                $filePath = $uploadDir . '/' . $file;
+                if (is_file($filePath)) {
+                    $freedBytes += filesize($filePath);
+                    @unlink($filePath);
+                    $deletedCount++;
+                }
+            }
+        }
+
+        $freedKb = round($freedBytes / 1024, 1);
+
+        return $this->json([
+            'success' => true,
+            'deletedCount' => $deletedCount,
+            'freedKb' => $freedKb,
+        ]);
+    }
+
+    #[Route('/admin/backup-db', name: 'admin_backup_db', methods: ['GET'])]
     public function backupDatabase(Request $request): Response
     {
         if (!$this->isAuthorized($request)) {
@@ -453,96 +588,5 @@ class ApiController extends AbstractController
         $fileName = "backup_piscine_{$dateStr}.db";
 
         return $this->file($dbPath, $fileName, \Symfony\Component\HttpFoundation\ResponseHeaderBag::DISPOSITION_ATTACHMENT);
-    }
-
-    #[Route('/admin/tasks/{id}', name: 'api_admin_task_update', methods: ['PUT'])]
-    public function updateTask(int $id, Request $request, EntityManagerInterface $em): JsonResponse
-    {
-        if (!$this->isAuthorized($request)) {
-            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
-        }
-
-        $task = $em->getRepository(MaintenanceTask::class)->find($id);
-        if (!$task) {
-            return $this->json(['error' => 'Tâche introuvable'], Response::HTTP_NOT_FOUND);
-        }
-
-        $data = json_decode($request->getContent(), true) ?? [];
-        $title = trim((string)($data['title'] ?? ''));
-        $category = trim((string)($data['category'] ?? ''));
-        $frequency = trim((string)($data['frequency'] ?? ''));
-        $startMonth = (int)($data['startMonth'] ?? 1);
-
-        if ($title === '') {
-            return $this->json(['error' => 'Le libellé est obligatoire'], Response::HTTP_BAD_REQUEST);
-        }
-
-        $task->setTitle($title);
-        if ($category !== '') $task->setCategory($category);
-        if ($frequency !== '') $task->setFrequency($frequency);
-        $task->setStartMonth(max(1, min(12, $startMonth)));
-
-        $em->flush();
-
-        return $this->json(['success' => true, 'message' => 'Tâche mise à jour']);
-    }
-
-    #[Route('/tasks/{id}/history', name: 'api_task_history', methods: ['GET'])]
-    public function getTaskHistory(int $id, Request $request, EntityManagerInterface $em): JsonResponse
-    {
-        if (!$this->isAuthorized($request)) {
-            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
-        }
-
-        $task = $em->getRepository(MaintenanceTask::class)->find($id);
-        if (!$task) {
-            return $this->json(['error' => 'Tâche introuvable'], Response::HTTP_NOT_FOUND);
-        }
-
-        $year = (int)$request->query->get('year', (int)date('Y'));
-        $logs = $em->getRepository(TaskLog::class)->findBy(
-            ['task' => $task, 'year' => $year],
-            ['month' => 'ASC']
-        );
-
-        $logsByMonth = [];
-        foreach ($logs as $log) {
-            $logsByMonth[$log->getMonth()] = [
-                'status' => $log->getStatus(),
-                'observation' => $log->getObservation(),
-                'updatedBy' => $log->getUpdatedBy(),
-                'completedAt' => $log->getCompletedAt()?->format(\DateTimeInterface::ATOM),
-                'photoUrl' => $log->getPhotoUrl(),
-            ];
-        }
-
-        $history = [];
-        for ($m = 1; $m <= 12; $m++) {
-            $start = $task->getStartMonth();
-            $interval = $task->getIntervalMonths();
-            $isDue = ($interval <= 1) || (($m - $start) >= 0 && (($m - $start) % $interval === 0));
-
-            $log = $logsByMonth[$m] ?? null;
-            $history[] = [
-                'month' => $m,
-                'isDue' => $isDue,
-                'status' => $log ? $log['status'] : ($isDue ? 'A_FAIRE' : 'NON_DU'),
-                'observation' => $log['observation'] ?? null,
-                'updatedBy' => $log['updatedBy'] ?? null,
-                'completedAt' => $log['completedAt'] ?? null,
-                'photoUrl' => $log['photoUrl'] ?? null,
-            ];
-        }
-
-        return $this->json([
-            'task' => [
-                'id' => $task->getId(),
-                'title' => $task->getTitle(),
-                'category' => $task->getCategory(),
-                'frequency' => $task->getFrequency(),
-            ],
-            'year' => $year,
-            'history' => $history,
-        ]);
     }
 }
