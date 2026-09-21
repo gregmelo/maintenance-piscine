@@ -7,21 +7,13 @@ import {
   setApiKey,
 } from "./syncService";
 import {
-  CheckCircle2,
-  AlertTriangle,
-  Circle,
-  ChevronDown,
-  ChevronRight,
   Settings,
-  MessageSquare,
-  Camera,
   X,
   Shield,
   Printer,
   FileSpreadsheet,
   Search,
   Filter,
-  History,
 } from "lucide-react";
 import { compressImage } from "./imageUtils";
 import AdminDashboard from "./AdminDashboard";
@@ -29,6 +21,7 @@ import { exportTasksToExcel, exportTasksToPDF } from "./exportUtils";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import "./App.css";
 import ConnectionStatus from "./components/ConnectionStatus";
+import CategoryList from "./components/CategoryList";
 import PhotoLightbox from "./components/PhotoLightbox";
 import PrintSignature from "./components/PrintSignature";
 import TaskHistoryModal from "./components/TaskHistoryModal";
@@ -505,216 +498,22 @@ export default function App() {
           </button>
         </div>
 
-        {/* CATÉGORIES */}
-        <div className="categories-grid">
-          {Object.entries(groupedTasks).map(([category, items]) => {
-            const isOpen = openCategories[category];
-            return (
-              <div key={category} className="category-card">
-                <div onClick={() => handleToggleCategory(category)} className="category-header">
-                  <span className="category-name">
-                    {category}
-                  </span>
-                  <div className="category-summary">
-                    <span className="category-count">
-                      ({items.length})
-                    </span>
-                    {isOpen ? (
-                      <ChevronDown size={18} color="#64748b" />
-                    ) : (
-                      <ChevronRight size={18} color="#64748b" />
-                    )}
-                  </div>
-                </div>
-
-                {isOpen && (
-                  <div>
-                    {items.map((task) => {
-                      const isDue = task.isDue;
-                      const isWarning = task.status === "RESERVE";
-                      const hasNote = Boolean(
-                        task.observation && task.observation.trim().length > 0,
-                      );
-
-                      return (
-                        <div key={task.id} className={`task-row ${isDue ? "" : "is-not-due"}`}>
-                          <div className="task-main">
-                            <div className="task-details">
-                              <div className="task-heading">
-                                <span className="task-title">
-                                  {task.title}
-                                </span>
-                                <button
-                                  onClick={() => openTaskHistory(task)}
-                                  className="history-trigger no-print"
-                                  title="Consulter l'historique de cette tâche"
-                                >
-                                  <History size={14} />
-                                </button>
-                              </div>
-                              <div className="task-meta">
-                                <span>{task.frequency}</span>
-                                {!isDue && (
-                                  <span className="not-due-label">
-                                    • Non dû ce mois
-                                  </span>
-                                )}
-                                {task.status !== "A_FAIRE" &&
-                                  task.updatedBy && (
-                                    <span className="validated-by">
-                                      • Validé par{" "}
-                                      <strong>
-                                        {task.updatedBy}
-                                      </strong>
-                                      {task.completedAt && (
-                                        <span className="completed-at">
-                                          {" "}
-                                          {formatCompletedAt(task.completedAt)}
-                                        </span>
-                                      )}
-                                    </span>
-                                  )}
-                              </div>
-                            </div>
-
-                            {/* BOUTONS ACTIONS */}
-                            {isDue ? (
-                              <div className="task-actions no-print">
-                                <button
-                                  onClick={() =>
-                                    handleStatusChange(task.id, "FAIT")
-                                  }
-                                  className={`status-button ${task.status === "FAIT" ? "is-done" : ""}`}
-                                  title="Fait"
-                                >
-                                  <CheckCircle2 size={18} />
-                                </button>
-                                <button
-                                  onClick={() =>
-                                    handleStatusChange(task.id, "RESERVE")
-                                  }
-                                  className={`status-button ${isWarning ? "is-reserved" : ""}`}
-                                  title="Réserve / Attention"
-                                >
-                                  <AlertTriangle size={18} />
-                                </button>
-                                <button
-                                  onClick={() =>
-                                    handleStatusChange(task.id, "A_FAIRE")
-                                  }
-                                  className={`status-button ${task.status === "A_FAIRE" ? "is-todo" : ""}`}
-                                  title="À faire"
-                                >
-                                  <Circle size={18} />
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="not-due-placeholder">
-                                —
-                              </span>
-                            )}
-                          </div>
-
-                          {/* ZONE TEXTAREA ET PHOTO LORSQU'UNE RÉSERVE EST COCHÉE */}
-                          {isDue && isWarning && (
-                            <div className="reserve-editor">
-                              <label className="reserve-label">
-                                <MessageSquare size={14} /> Préciser l'anomalie
-                                / réserve constatée :
-                              </label>
-                              <textarea
-                                value={notes[task.id] ?? task.observation ?? ""}
-                                onChange={(e) =>
-                                  handleNoteChange(task.id, e.target.value)
-                                }
-                                placeholder="Ex. Fuite constatée, vis manquante, pièce à commander..."
-                                rows={2}
-                                className="reserve-textarea"
-                              />
-
-                              {/* Bouton de prise de vue & Aperçu */}
-                              <div className="photo-actions">
-                                <label
-                                  className="no-print"
-                                  className="photo-upload"
-                                >
-                                  <Camera size={16} /> Ajouter une photo
-                                  <input
-                                    type="file"
-                                    accept="image/*"
-                                    capture="environment"
-                                    onChange={(e) =>
-                                      handlePhotoChange(
-                                        task.id,
-                                        e.target.files[0],
-                                      )
-                                    }
-                                  />
-                                </label>
-
-                                {(photos[task.id] || task.photoUrl) && (
-                                  <img
-                                    src={
-                                      photos[task.id]
-                                        ? photos[task.id]
-                                        : `https://vericelgregory.alwaysdata.net/piscine${task.photoUrl}`
-                                    }
-                                    alt="Aperçu réserve"
-                                    onClick={() =>
-                                      setPreviewImage(
-                                        photos[task.id]
-                                          ? photos[task.id]
-                                          : `https://vericelgregory.alwaysdata.net/piscine${task.photoUrl}`,
-                                      )
-                                    }
-                                    className="task-photo preview"
-                                    title="Cliquer pour agrandir l'image"
-                                  />
-                                )}
-                              </div>
-
-                              <div className="save-note-row no-print">
-                                <button
-                                  onClick={() => handleSaveNote(task)}
-                                  className="save-note-button"
-                                >
-                                  Enregistrer la note
-                                </button>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* AFFICHAGE DE LA NOTE ET DE LA PHOTO EXISTANTES */}
-                          {isDue && !isWarning && hasNote && (
-                            <div className="existing-note">
-                              <div>
-                                <strong>Note précédente :</strong>{" "}
-                                {task.observation}
-                              </div>
-                              {task.photoUrl && (
-                                <img
-                                  src={`https://vericelgregory.alwaysdata.net/piscine${task.photoUrl}`}
-                                  alt="Photo réserve"
-                                  onClick={() =>
-                                    setPreviewImage(
-                                      `https://vericelgregory.alwaysdata.net/piscine${task.photoUrl}`,
-                                    )
-                                  }
-                                  className="task-photo existing"
-                                  title="Cliquer pour agrandir"
-                                />
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <CategoryList
+          groupedTasks={groupedTasks}
+          openCategories={openCategories}
+          onToggleCategory={handleToggleCategory}
+          taskProps={{
+            notes,
+            photos,
+            onStatusChange: handleStatusChange,
+            onNoteChange: handleNoteChange,
+            onPhotoChange: handlePhotoChange,
+            onSaveNote: handleSaveNote,
+            onOpenHistory: openTaskHistory,
+            onPreviewImage: setPreviewImage,
+            formatCompletedAt,
+          }}
+        />
 
         {/* CARTOUCHE D'ÉMARGEMENT POUR L'IMPRESSION RÉGLEMENTAIRE */}
         <PrintSignature
