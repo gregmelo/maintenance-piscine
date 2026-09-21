@@ -23,11 +23,14 @@ import {
   FileSpreadsheet,
   Search,
   Filter,
+  History,
 } from "lucide-react";
 import { compressImage } from "./imageUtils";
 import AdminDashboard from "./AdminDashboard";
 import { exportTasksToCSV, exportTasksToPDF } from "./exportUtils";
 import { useRegisterSW } from "virtual:pwa-register/react";
+
+const API_BASE_URL = "https://vericelgregory.alwaysdata.net/piscine/api";
 
 const MONTH_NAMES = [
   "Janvier",
@@ -86,6 +89,11 @@ export default function App() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [onlyPending, setOnlyPending] = useState(false);
+
+  // Historique spécifique d'une tâche
+  const [historyTask, setHistoryTask] = useState(null);
+  const [historyData, setHistoryData] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   const {
     needRefresh: [needRefresh],
@@ -232,6 +240,24 @@ export default function App() {
     setApiKey(keyInput);
     setShowSettings(false);
     window.location.reload();
+  };
+
+  const openTaskHistory = async (task) => {
+    setHistoryTask(task);
+    setLoadingHistory(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/tasks/${task.id}/history`, {
+        headers: { "X-API-KEY": getApiKey() },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setHistoryData(data.history || []);
+      }
+    } catch (err) {
+      console.error("Erreur historique :", err);
+    } finally {
+      setLoadingHistory(false);
+    }
   };
 
   // Filtrage combiné : recherche textuelle et affichage des tâches restantes
@@ -878,12 +904,36 @@ export default function App() {
                             <div style={{ flex: 1 }}>
                               <div
                                 style={{
-                                  fontSize: "0.95rem",
-                                  fontWeight: "500",
-                                  color: "#1e293b",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "8px",
                                 }}
                               >
-                                {task.title}
+                                <span
+                                  style={{
+                                    fontSize: "0.95rem",
+                                    fontWeight: "500",
+                                    color: "#1e293b",
+                                  }}
+                                >
+                                  {task.title}
+                                </span>
+                                <button
+                                  onClick={() => openTaskHistory(task)}
+                                  className="no-print"
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    color: "#94a3b8",
+                                    cursor: "pointer",
+                                    padding: "2px",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                  }}
+                                  title="Consulter l'historique de cette tâche"
+                                >
+                                  <History size={14} />
+                                </button>
                               </div>
                               <div
                                 style={{
@@ -1227,6 +1277,194 @@ export default function App() {
             <div>Visa de la direction / régie : ___________________</div>
           </div>
         </div>
+
+        {/* MODALE HISTORIQUE D'UNE TÂCHE */}
+        {historyTask && (
+          <div
+            onClick={() => setHistoryTask(null)}
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              width: "100vw",
+              height: "100vh",
+              backgroundColor: "rgba(15, 23, 42, 0.6)",
+              backdropFilter: "blur(4px)",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              zIndex: 9999,
+              padding: "16px",
+              boxSizing: "border-box",
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                backgroundColor: "#ffffff",
+                borderRadius: "14px",
+                width: "100%",
+                maxWidth: "560px",
+                maxHeight: "80vh",
+                display: "flex",
+                flexDirection: "column",
+                padding: "20px",
+                boxSizing: "border-box",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "14px",
+                  borderBottom: "1px solid #e2e8f0",
+                  paddingBottom: "10px",
+                }}
+              >
+                <div>
+                  <h3
+                    style={{
+                      margin: 0,
+                      fontSize: "1.1rem",
+                      color: "#0f172a",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    Historique des contrôles
+                  </h3>
+                  <span style={{ fontSize: "0.8rem", color: "#64748b" }}>
+                    {historyTask.title}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setHistoryTask(null)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "#64748b",
+                  }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div style={{ flex: 1, overflowY: "auto", paddingRight: "4px" }}>
+                {loadingHistory ? (
+                  <p style={{ color: "#64748b" }}>Chargement de l'historique...</p>
+                ) : historyData.length === 0 ? (
+                  <p style={{ color: "#64748b", fontStyle: "italic" }}>
+                    Aucun historique enregistré pour ce point de contrôle.
+                  </p>
+                ) : (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "10px",
+                    }}
+                  >
+                    {historyData.map((h) => (
+                      <div
+                        key={h.logId}
+                        style={{
+                          padding: "10px 14px",
+                          borderRadius: "8px",
+                          border: "1px solid #e2e8f0",
+                          backgroundColor:
+                            h.status === "FAIT"
+                              ? "#f0fdf4"
+                              : h.status === "RESERVE"
+                                ? "#fffbeb"
+                                : "#fef2f2",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            marginBottom: "4px",
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontWeight: "bold",
+                              fontSize: "0.85rem",
+                              color: "#1e293b",
+                            }}
+                          >
+                            {MONTH_NAMES[h.month - 1]} {h.year}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: "0.75rem",
+                              fontWeight: "bold",
+                              color:
+                                h.status === "FAIT"
+                                  ? "#16a34a"
+                                  : h.status === "RESERVE"
+                                    ? "#d97706"
+                                    : "#ef4444",
+                            }}
+                          >
+                            {h.status === "FAIT"
+                              ? "FAIT"
+                              : h.status === "RESERVE"
+                                ? "RÉSERVE"
+                                : "À FAIRE"}
+                          </span>
+                        </div>
+                        {h.updatedBy && (
+                          <div
+                            style={{ fontSize: "0.75rem", color: "#64748b" }}
+                          >
+                            Par {h.updatedBy}{" "}
+                            {h.completedAt && formatCompletedAt(h.completedAt)}
+                          </div>
+                        )}
+                        {h.observation && (
+                          <div
+                            style={{
+                              fontSize: "0.8rem",
+                              marginTop: "4px",
+                              color: "#334155",
+                              fontStyle: "italic",
+                            }}
+                          >
+                            « {h.observation} »
+                          </div>
+                        )}
+                        {h.photoUrl && (
+                          <div style={{ marginTop: "6px" }}>
+                            <img
+                              src={`https://vericelgregory.alwaysdata.net/piscine${h.photoUrl}`}
+                              alt="Photo contrôle"
+                              onClick={() =>
+                                setPreviewImage(
+                                  `https://vericelgregory.alwaysdata.net/piscine${h.photoUrl}`,
+                                )
+                              }
+                              style={{
+                                width: "45px",
+                                height: "45px",
+                                objectFit: "cover",
+                                borderRadius: "6px",
+                                border: "1px solid #cbd5e1",
+                                cursor: "pointer",
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ESPACE ADMIN */}
         {showAdmin && (

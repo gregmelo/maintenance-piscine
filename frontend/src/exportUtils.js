@@ -179,3 +179,66 @@ export function exportTasksToPDF(tasks, monthName, year) {
 
   doc.save(`registre_maintenance_${monthName.toLowerCase()}_${year}.pdf`);
 }
+
+/**
+ * Génère le registre annuel complet de l'année au format PDF
+ */
+export function exportAnnualPDF(summaryData, year) {
+  if (!summaryData || summaryData.length === 0) {
+    alert("Aucune donnée annuelle à exporter.");
+    return;
+  }
+
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a4",
+  });
+
+  // Page de garde / En-tête
+  doc.setFontSize(18);
+  doc.setTextColor(15, 23, 42);
+  doc.text("Piscine Municipale d'Ambérieu", 14, 20);
+
+  doc.setFontSize(12);
+  doc.setTextColor(71, 85, 105);
+  doc.text(`Carnet sanitaire et registre annuel de maintenance — Année ${year}`, 14, 28);
+
+  const monthsNames = [
+    "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+    "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
+  ];
+
+  const tableData = summaryData.map((m) => [
+    monthsNames[m.month - 1],
+    m.dueCount,
+    m.doneCount,
+    m.reserveCount,
+    m.todoCount,
+    `${m.rate}%`,
+  ]);
+
+  autoTable(doc, {
+    startY: 36,
+    head: [["Mois", "Contrôles dus", "Faites", "Réserves", "Non traitées", "Taux de réalisation"]],
+    body: tableData,
+    theme: "striped",
+    headStyles: {
+      fillColor: [2, 132, 199],
+      textColor: [255, 255, 255],
+      fontStyle: "bold",
+      fontSize: 9,
+    },
+    styles: { fontSize: 8.5, cellPadding: 3, halign: "center" },
+    columnStyles: { 0: { halign: "left", fontStyle: "bold" } },
+  });
+
+  const finalY = doc.lastAutoTable.finalY + 15;
+  doc.setFontSize(10);
+  doc.setTextColor(71, 85, 105);
+  doc.text("Visa de clôture annuelle de l'établissement :", 14, finalY);
+  doc.text("Le Responsable Technique : ___________________", 14, finalY + 15);
+  doc.text("La Direction : ___________________", 110, finalY + 15);
+
+  doc.save(`registre_annuel_maintenance_${year}.pdf`);
+}

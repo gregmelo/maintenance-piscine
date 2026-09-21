@@ -454,4 +454,95 @@ class ApiController extends AbstractController
 
         return $this->file($dbPath, $fileName, \Symfony\Component\HttpFoundation\ResponseHeaderBag::DISPOSITION_ATTACHMENT);
     }
+
+    #[Route('/admin/tasks/{id}', name: 'api_admin_task_update', methods: ['PUT'])]
+    public function updateTask(int $id, Request $request, EntityManagerInterface $em): JsonResponse
+    {
+        if (!$this->isAuthorized($request)) {
+            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $task = $em->getRepository(MaintenanceTask::class)->find($id);
+        if (!$task) {
+            return $this->json(['error' => 'Tâche introuvable'], Response::HTTP_NOT_FOUND);
+        }
+
+        $data = json_decode($request->getContent(), true) ?? [];
+        $title = trim((string)($data['title'] ?? ''));
+        $category = trim((string)($data['category'] ?? ''));
+        $frequency = trim((string)($data['frequency'] ?? ''));
+        $startMonth = (int)($data['startMonth'] ?? 1);
+
+        if ($title === '') {
+            return $this->json(['error' => 'Le libellé est obligatoire'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $task->setTitle($title);
+        if ($category !== '') $task->setCategory($category);
+        if ($frequency !== '') $task->setFrequency($frequency);
+        $task->setStartMonth(max(1, min(12, $startMonth)));
+
+        $em->flush();
+
+        return $this->json(['success' => true, 'message' => 'Tâche mise à jour']);
+    }
+
+    #[Route('/tasks/{id}/history', name: 'api_task_history', methods: ['GET'])]
+    public function getTaskHistory(int $id, Request $request, EntityManagerInterface $em): JsonResponse
+    {
+        if (!$this->isAuthorized($request)) {
+            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $task = $em->getRepository(MaintenanceTask::class)->find($id);
+        if (!$task) {
+            return $this->json(['error' => 'Tâche introuvable'], Response::HTTP_NOT_FOUND);
+        }
+
+        $year = (int)$request->query->get('year', (int)date('Y'));
+        $logs = $em->getRepository(TaskLog::class)->findBy(
+            ['task' => $task, 'year' => $year],
+            ['month' => 'ASC']
+        );
+
+        $logsByMonth = [];
+        foreach ($logs as $log) {
+            $logsByMonth[$log->getMonth()] = [
+                'status' => $log->getStatus(),
+                'observation' => $log->getObservation(),
+                'updatedBy' => $log->getUpdatedBy(),
+                'completedAt' => $log->getCompletedAt()?->format(\DateTimeInterface::ATOM),
+                'photoUrl' => $log->getPhotoUrl(),
+            ];
+        }
+
+        $history = [];
+        for ($m = 1; $m <= 12; $m++) {
+            $start = $task->getStartMonth();
+            $interval = $task->getIntervalMonths();
+            $isDue = ($interval <= 1) || (($m - $start) >= 0 && (($m - $start) % $interval === 0));
+
+            $log = $logsByMonth[$m] ?? null;
+            $history[] = [
+                'month' => $m,
+                'isDue' => $isDue,
+                'status' => $log ? $log['status'] : ($isDue ? 'A_FAIRE' : 'NON_DU'),
+                'observation' => $log['observation'] ?? null,
+                'updatedBy' => $log['updatedBy'] ?? null,
+                'completedAt' => $log['completedAt'] ?? null,
+                'photoUrl' => $log['photoUrl'] ?? null,
+            ];
+        }
+
+        return $this->json([
+            'task' => [
+                'id' => $task->getId(),
+                'title' => $task->getTitle(),
+                'category' => $task->getCategory(),
+                'frequency' => $task->getFrequency(),
+            ],
+            'year' => $year,
+            'history' => $history,
+        ]);
+    }
 }

@@ -9,8 +9,12 @@ import {
   BarChart3,
   KeyRound,
   Database,
+  Pencil,
+  FileDown,
+  Sparkles,
 } from "lucide-react";
 import { getApiKey } from "./syncService";
+import { exportAnnualReportToPDF } from "./exportUtils";
 
 const API_BASE_URL = "https://vericelgregory.alwaysdata.net/piscine/api";
 
@@ -47,10 +51,15 @@ export default function AdminDashboard({
   const [newPin, setNewPin] = useState("");
   const [pinChangeMsg, setPinChangeMsg] = useState({ type: "", text: "" });
 
+  // Nettoyage photos
+  const [cleaningPhotos, setCleaningPhotos] = useState(false);
+  const [cleanupResult, setCleanupResult] = useState(null);
+
   // Synthèse annuelle
   const [summaryYear, setSummaryYear] = useState(new Date().getFullYear());
   const [summaryData, setSummaryData] = useState([]);
   const [loadingSummary, setLoadingSummary] = useState(false);
+  const [downloadingAnnualPdf, setDownloadingAnnualPdf] = useState(false);
 
   // Réserves
   const [reserves, setReserves] = useState([]);
@@ -59,16 +68,16 @@ export default function AdminDashboard({
   const [resolutionNote, setResolutionNote] = useState("");
   const [deletePhoto, setDeletePhoto] = useState(true);
 
-  // Tâches
+  // Tâches & Édition
   const [tasksList, setTasksList] = useState([]);
   const [newTitle, setNewTitle] = useState("");
   const [newCategory, setNewCategory] = useState("Sécurité Incendie");
   const [newFrequency, setNewFrequency] = useState("Mensuel");
   const [newStartMonth, setNewStartMonth] = useState(1);
+  const [editingTask, setEditingTask] = useState(null);
 
   const apiKey = getApiKey();
 
-  // 1. Authentification via le serveur backend
   const handleLogin = async (e) => {
     e.preventDefault();
     if (!pinInput.trim()) return;
@@ -101,7 +110,6 @@ export default function AdminDashboard({
     }
   };
 
-  // 2. Mise à jour du code PIN
   const handleUpdatePin = async (e) => {
     e.preventDefault();
     setPinChangeMsg({ type: "", text: "" });
@@ -135,6 +143,44 @@ export default function AdminDashboard({
         type: "error",
         text: "Erreur de connexion au serveur",
       });
+    }
+  };
+
+  const handleCleanupPhotos = async () => {
+    if (!window.confirm("Nettoyer toutes les photos orphelines du serveur ?")) return;
+    setCleaningPhotos(true);
+    setCleanupResult(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/cleanup-photos`, {
+        method: "POST",
+        headers: { "X-API-KEY": apiKey },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setCleanupResult(`Nettoyage réussi : ${data.deletedCount} image(s) supprimée(s), ${data.freedKb} Ko libérés.`);
+      }
+    } catch {
+      setCleanupResult("Erreur lors de l'opération de nettoyage.");
+    } finally {
+      setCleaningPhotos(false);
+    }
+  };
+
+  const handleExportAnnualPDF = async () => {
+    setDownloadingAnnualPdf(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/annual-report?year=${summaryYear}`, {
+        headers: { "X-API-KEY": apiKey },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        exportAnnualReportToPDF(data, summaryYear);
+      }
+    } catch (e) {
+      console.error("Erreur téléchargement carnet annuel :", e);
+      alert("Impossible de générer le rapport annuel.");
+    } finally {
+      setDownloadingAnnualPdf(false);
     }
   };
 
@@ -204,7 +250,7 @@ export default function AdminDashboard({
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
-    } catch (err) {
+    } catch {
       alert("Erreur lors du téléchargement de la base de données.");
     }
   };
@@ -318,6 +364,36 @@ export default function AdminDashboard({
     }
   };
 
+  const handleSaveEditTask = async (e) => {
+    e.preventDefault();
+    if (!editingTask || !editingTask.title.trim()) return;
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/tasks/${editingTask.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-KEY": apiKey,
+        },
+        body: JSON.stringify({
+          title: editingTask.title.trim(),
+          category: editingTask.category,
+          frequency: editingTask.frequency,
+          startMonth: Number(editingTask.startMonth || 1),
+        }),
+      });
+
+      if (res.ok) {
+        setEditingTask(null);
+        await refreshTasks();
+        await refreshSummary();
+        onDataChanged();
+      }
+    } catch (e) {
+      console.error("Erreur mise à jour tâche :", e);
+    }
+  };
+
   const handleDeleteTask = async (taskId, title) => {
     if (
       !window.confirm(
@@ -343,14 +419,12 @@ export default function AdminDashboard({
     }
   };
 
-  // Ferme la modale et réinitialise la session admin
   const handleClose = () => {
     sessionStorage.removeItem("pool_admin_token");
     setIsAdminAuth(false);
     onClose();
   };
 
-  // Écran de verrouillage / saisie du PIN
   if (!isAdminAuth) {
     return (
       <div style={modalOverlayStyle}>
@@ -561,7 +635,7 @@ export default function AdminDashboard({
               color: activeTab === "security" ? "#ffffff" : "#475569",
             }}
           >
-            <KeyRound size={16} /> Sécurité / PIN
+            <KeyRound size={16} /> Sécurité & Système
           </button>
         </div>
 
@@ -571,15 +645,17 @@ export default function AdminDashboard({
             <div
               style={{
                 display: "flex",
+                flexWrap: "wrap",
                 justifyContent: "space-between",
                 alignItems: "center",
+                gap: "10px",
                 marginBottom: "14px",
               }}
             >
               <h3 style={{ margin: 0, fontSize: "1rem", color: "#1e293b" }}>
                 Bilan de réalisation sur l'année {summaryYear}
               </h3>
-              <div style={{ display: "flex", gap: "6px" }}>
+              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                 <button
                   onClick={() => {
                     const next = summaryYear - 1;
@@ -607,6 +683,21 @@ export default function AdminDashboard({
                   }}
                 >
                   Année suivante
+                </button>
+                <button
+                  onClick={handleExportAnnualPDF}
+                  disabled={downloadingAnnualPdf}
+                  style={{
+                    ...primaryBtnStyle,
+                    backgroundColor: "#059669",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                  title="Télécharger l'intégralité du carnet annuel (12 mois)"
+                >
+                  <FileDown size={16} />
+                  {downloadingAnnualPdf ? "Génération PDF..." : "Exporter Car. Annuel PDF"}
                 </button>
               </div>
             </div>
@@ -1014,31 +1105,59 @@ export default function AdminDashboard({
           </div>
         )}
 
-        {/* CONTENU ONGLET 3 : GESTION DES TÂCHES */}
+        {/* CONTENU ONGLET 3 : GESTION & ÉDITION DES TÂCHES */}
         {activeTab === "tasks" && (
           <div style={{ flex: 1, overflowY: "auto", paddingRight: "4px" }}>
+            {/* FORMULAIRE D'AJOUT OU D'ÉDITION */}
             <form
-              onSubmit={handleAddTask}
+              onSubmit={editingTask ? handleSaveEditTask : handleAddTask}
               style={{
-                background: "#f8fafc",
+                background: editingTask ? "#eff6ff" : "#f8fafc",
                 padding: "14px",
                 borderRadius: "10px",
-                border: "1px solid #e2e8f0",
+                border: editingTask ? "1px solid #93c5fd" : "1px solid #e2e8f0",
                 marginBottom: "16px",
               }}
             >
-              <h4
-                style={{
-                  margin: "0 0 10px",
-                  fontSize: "0.95rem",
-                  color: "#1e293b",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                }}
-              >
-                <PlusCircle size={16} color="#0284c7" /> Ajouter un nouveau point de contrôle
-              </h4>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                <h4
+                  style={{
+                    margin: 0,
+                    fontSize: "0.95rem",
+                    color: editingTask ? "#1d4ed8" : "#1e293b",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  {editingTask ? (
+                    <>
+                      <Pencil size={16} color="#2563eb" /> Modifier le point de contrôle
+                    </>
+                  ) : (
+                    <>
+                      <PlusCircle size={16} color="#0284c7" /> Ajouter un nouveau point de contrôle
+                    </>
+                  )}
+                </h4>
+                {editingTask && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingTask(null)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#64748b",
+                      fontSize: "0.78rem",
+                      cursor: "pointer",
+                      textDecoration: "underline",
+                    }}
+                  >
+                    Annuler l'édition
+                  </button>
+                )}
+              </div>
+
               <div
                 style={{
                   display: "grid",
@@ -1051,8 +1170,12 @@ export default function AdminDashboard({
                   <label style={labelStyle}>Libellé du contrôle :</label>
                   <input
                     type="text"
-                    value={newTitle}
-                    onChange={(e) => setNewTitle(e.target.value)}
+                    value={editingTask ? editingTask.title : newTitle}
+                    onChange={(e) =>
+                      editingTask
+                        ? setEditingTask({ ...editingTask, title: e.target.value })
+                        : setNewTitle(e.target.value)
+                    }
                     placeholder="Ex: Contrôler la fermeture automatique..."
                     required
                     style={inputStyle}
@@ -1061,8 +1184,12 @@ export default function AdminDashboard({
                 <div>
                   <label style={labelStyle}>Catégorie :</label>
                   <select
-                    value={newCategory}
-                    onChange={(e) => setNewCategory(e.target.value)}
+                    value={editingTask ? editingTask.category : newCategory}
+                    onChange={(e) =>
+                      editingTask
+                        ? setEditingTask({ ...editingTask, category: e.target.value })
+                        : setNewCategory(e.target.value)
+                    }
                     style={inputStyle}
                   >
                     <option value="Sécurité Incendie">Sécurité Incendie</option>
@@ -1084,8 +1211,12 @@ export default function AdminDashboard({
                 <div>
                   <label style={labelStyle}>Fréquence :</label>
                   <select
-                    value={newFrequency}
-                    onChange={(e) => setNewFrequency(e.target.value)}
+                    value={editingTask ? editingTask.frequency : newFrequency}
+                    onChange={(e) =>
+                      editingTask
+                        ? setEditingTask({ ...editingTask, frequency: e.target.value })
+                        : setNewFrequency(e.target.value)
+                    }
                     style={inputStyle}
                   >
                     <option value="Mensuel">Mensuel</option>
@@ -1094,12 +1225,16 @@ export default function AdminDashboard({
                     <option value="Annuel">Annuel</option>
                   </select>
                 </div>
-                {newFrequency !== "Mensuel" && (
+                {(editingTask ? editingTask.frequency : newFrequency) !== "Mensuel" && (
                   <div>
                     <label style={labelStyle}>1er mois d'échéance :</label>
                     <select
-                      value={newStartMonth}
-                      onChange={(e) => setNewStartMonth(e.target.value)}
+                      value={editingTask ? (editingTask.startMonth || 1) : newStartMonth}
+                      onChange={(e) =>
+                        editingTask
+                          ? setEditingTask({ ...editingTask, startMonth: Number(e.target.value) })
+                          : setNewStartMonth(e.target.value)
+                      }
                       style={inputStyle}
                     >
                       {MONTH_NAMES.map((name, idx) => (
@@ -1111,12 +1246,18 @@ export default function AdminDashboard({
                   </div>
                 )}
               </div>
-              <button type="submit" style={primaryBtnStyle}>
-                Ajouter la vérification
+              <button
+                type="submit"
+                style={{
+                  ...primaryBtnStyle,
+                  backgroundColor: editingTask ? "#2563eb" : "#0284c7",
+                }}
+              >
+                {editingTask ? "Enregistrer les modifications" : "Ajouter la vérification"}
               </button>
             </form>
 
-            {/* Listing des tâches existantes sous forme de Cards */}
+            {/* LISTE DES TÂCHES (CARDS) AVEC BOUTON D'ÉDITION & SUPPRESSION */}
             <div
               style={{
                 display: "flex",
@@ -1188,36 +1329,64 @@ export default function AdminDashboard({
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => handleDeleteTask(t.id, t.title)}
-                    style={{
-                      border: "none",
-                      backgroundColor: "#fee2e2",
-                      color: "#ef4444",
-                      padding: "8px",
-                      borderRadius: "8px",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                    }}
-                    title="Supprimer la vérification"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
+                    <button
+                      onClick={() => {
+                        setEditingTask({
+                          id: t.id,
+                          title: t.title,
+                          category: t.category,
+                          frequency: t.frequency,
+                          startMonth: t.startMonth || 1,
+                        });
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }}
+                      style={{
+                        border: "none",
+                        backgroundColor: "#f1f5f9",
+                        color: "#334155",
+                        padding: "8px",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                      title="Modifier cette vérification"
+                    >
+                      <Pencil size={15} />
+                    </button>
+
+                    <button
+                      onClick={() => handleDeleteTask(t.id, t.title)}
+                      style={{
+                        border: "none",
+                        backgroundColor: "#fee2e2",
+                        color: "#ef4444",
+                        padding: "8px",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                      title="Supprimer la vérification"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* CONTENU ONGLET 4 : SÉCURITÉ / PIN */}
+        {/* CONTENU ONGLET 4 : SÉCURITÉ & MAINTENANCE SYSTÈME */}
         {activeTab === "security" && (
           <div style={{ flex: 1, overflowY: "auto", paddingRight: "4px" }}>
             <div
               style={{
-                maxWidth: "450px",
+                maxWidth: "480px",
                 margin: "0 auto",
                 background: "#f8fafc",
                 padding: "20px",
@@ -1295,10 +1464,71 @@ export default function AdminDashboard({
                 </button>
               </form>
 
-              {/* SAUVEGARDE DIRECTE SQLITE */}
+              {/* NETTOYAGE DU STOCKAGE PHOTOS */}
               <div
                 style={{
                   marginTop: "24px",
+                  paddingTop: "18px",
+                  borderTop: "1px solid #e2e8f0",
+                }}
+              >
+                <h4
+                  style={{
+                    margin: "0 0 6px",
+                    fontSize: "0.95rem",
+                    color: "#1e293b",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <Sparkles size={17} color="#0284c7" /> Nettoyage du stockage (Photos orphelines)
+                </h4>
+                <p
+                  style={{
+                    fontSize: "0.82rem",
+                    color: "#64748b",
+                    margin: "0 0 12px",
+                  }}
+                >
+                  Supprime sur le serveur Alwaysdata les photos d'anomalies résolues qui ne sont plus reliées à aucun contrôle.
+                </p>
+                {cleanupResult && (
+                  <div
+                    style={{
+                      fontSize: "0.82rem",
+                      color: "#166534",
+                      backgroundColor: "#f0fdf4",
+                      padding: "8px 12px",
+                      borderRadius: "6px",
+                      border: "1px solid #bbf7d0",
+                      marginBottom: "10px",
+                    }}
+                  >
+                    {cleanupResult}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={handleCleanupPhotos}
+                  disabled={cleaningPhotos}
+                  style={{
+                    ...primaryBtnStyle,
+                    backgroundColor: "#475569",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <Sparkles size={15} />
+                  {cleaningPhotos ? "Nettoyage en cours..." : "Purger les photos orphelines"}
+                </button>
+              </div>
+
+              {/* SAUVEGARDE DIRECTE SQLITE */}
+              <div
+                style={{
+                  marginTop: "20px",
                   paddingTop: "18px",
                   borderTop: "1px solid #e2e8f0",
                 }}
