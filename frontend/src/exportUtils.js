@@ -65,7 +65,7 @@ export function exportTasksToCSV(tasks, monthName, year) {
 }
 
 /**
- * Génère et télécharge un PDF conforme pour les commissions de sécurité
+ * Génère et télécharge un PDF mensuel pour les commissions de sécurité
  */
 export function exportTasksToPDF(tasks, monthName, year) {
   if (!tasks || tasks.length === 0) {
@@ -79,7 +79,7 @@ export function exportTasksToPDF(tasks, monthName, year) {
     format: "a4",
   });
 
-  // Titre & En-tête
+  // En-tête
   doc.setFontSize(16);
   doc.setTextColor(15, 23, 42);
   doc.text("Piscine Municipale d'Ambérieu", 14, 16);
@@ -88,7 +88,6 @@ export function exportTasksToPDF(tasks, monthName, year) {
   doc.setTextColor(71, 85, 105);
   doc.text(`Registre de maintenance préventive — ${monthName} ${year}`, 14, 23);
 
-  // Préparation des données du tableau
   const tableData = tasks.map((t) => {
     let dateStr = "—";
     if (t.completedAt) {
@@ -117,7 +116,6 @@ export function exportTasksToPDF(tasks, monthName, year) {
     return [t.category || "—", t.title, t.frequency, statut, details || "—"];
   });
 
-  // Tableau stylisé
   autoTable(doc, {
     startY: 28,
     head: [["Catégorie", "Point de contrôle", "Fréq.", "Statut", "Suivi / Observation"]],
@@ -157,11 +155,9 @@ export function exportTasksToPDF(tasks, monthName, year) {
     },
   });
 
-  // Bloc émargement en pied de page
   const finalY = doc.lastAutoTable.finalY + 12;
   const pageHeight = doc.internal.pageSize.height;
 
-  // Si on est trop bas sur la page, on ajoute une page pour la signature
   if (finalY > pageHeight - 30) {
     doc.addPage();
     doc.setFontSize(9);
@@ -181,11 +177,11 @@ export function exportTasksToPDF(tasks, monthName, year) {
 }
 
 /**
- * Génère le registre annuel complet de l'année au format PDF
+ * Génère le carnet de maintenance annuel complet (12 mois)
  */
-export function exportAnnualPDF(summaryData, year) {
-  if (!summaryData || summaryData.length === 0) {
-    alert("Aucune donnée annuelle à exporter.");
+export function exportAnnualReportToPDF(annualData, year) {
+  if (!annualData || !annualData.months) {
+    alert("Données annuelles indisponibles.");
     return;
   }
 
@@ -195,50 +191,107 @@ export function exportAnnualPDF(summaryData, year) {
     format: "a4",
   });
 
-  // Page de garde / En-tête
+  const MONTH_NAMES = [
+    "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+    "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
+  ];
+
   doc.setFontSize(18);
   doc.setTextColor(15, 23, 42);
   doc.text("Piscine Municipale d'Ambérieu", 14, 20);
 
   doc.setFontSize(12);
   doc.setTextColor(71, 85, 105);
-  doc.text(`Carnet sanitaire et registre annuel de maintenance — Année ${year}`, 14, 28);
+  doc.text(`Registre Sanitaire & Maintenance Préventive — Bilan Annuel ${year}`, 14, 28);
+  doc.text(`Édité le : ${new Date().toLocaleDateString("fr-FR")}`, 14, 34);
 
-  const monthsNames = [
-    "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
-    "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
-  ];
+  let currentY = 42;
 
-  const tableData = summaryData.map((m) => [
-    monthsNames[m.month - 1],
-    m.dueCount,
-    m.doneCount,
-    m.reserveCount,
-    m.todoCount,
-    `${m.rate}%`,
-  ]);
+  annualData.months.forEach((mObj, idx) => {
+    const monthName = MONTH_NAMES[mObj.month - 1];
+    const tasks = mObj.tasks || [];
 
-  autoTable(doc, {
-    startY: 36,
-    head: [["Mois", "Contrôles dus", "Faites", "Réserves", "Non traitées", "Taux de réalisation"]],
-    body: tableData,
-    theme: "striped",
-    headStyles: {
-      fillColor: [2, 132, 199],
-      textColor: [255, 255, 255],
-      fontStyle: "bold",
-      fontSize: 9,
-    },
-    styles: { fontSize: 8.5, cellPadding: 3, halign: "center" },
-    columnStyles: { 0: { halign: "left", fontStyle: "bold" } },
+    if (tasks.length === 0) return;
+
+    if (idx > 0) {
+      doc.addPage();
+      currentY = 20;
+    }
+
+    doc.setFontSize(13);
+    doc.setTextColor(2, 132, 199);
+    doc.text(`Mois de ${monthName} ${year}`, 14, currentY);
+
+    const tableData = tasks.map((t) => {
+      let dateStr = "—";
+      if (t.completedAt) {
+        try {
+          const d = new Date(t.completedAt);
+          dateStr = d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
+        } catch {
+          dateStr = "";
+        }
+      }
+
+      const statut =
+        t.status === "FAIT" ? "FAIT" : t.status === "RESERVE" ? "RÉSERVE" : "À FAIRE";
+
+      const details = [
+        t.updatedBy ? `Par: ${t.updatedBy} (${dateStr})` : "",
+        t.observation ? `Note: ${t.observation}` : "",
+      ].filter(Boolean).join("\n");
+
+      return [t.category || "—", t.title, t.frequency, statut, details || "—"];
+    });
+
+    autoTable(doc, {
+      startY: currentY + 4,
+      head: [["Catégorie", "Point de contrôle", "Fréq.", "Statut", "Suivi / Observation"]],
+      body: tableData,
+      theme: "striped",
+      headStyles: {
+        fillColor: [2, 132, 199],
+        textColor: [255, 255, 255],
+        fontStyle: "bold",
+        fontSize: 8,
+      },
+      styles: {
+        fontSize: 7.5,
+        cellPadding: 2,
+        valign: "middle",
+        overflow: "linebreak",
+      },
+      columnStyles: {
+        0: { cellWidth: 32 },
+        1: { cellWidth: 62 },
+        2: { cellWidth: 18 },
+        3: { cellWidth: 20 },
+        4: { cellWidth: 56 },
+      },
+      didParseCell: (data) => {
+        if (data.section === "body" && data.column.index === 3) {
+          if (data.cell.raw === "FAIT") {
+            data.cell.styles.textColor = [22, 163, 74];
+            data.cell.styles.fontStyle = "bold";
+          } else if (data.cell.raw === "RÉSERVE") {
+            data.cell.styles.textColor = [217, 119, 6];
+            data.cell.styles.fontStyle = "bold";
+          } else {
+            data.cell.styles.textColor = [239, 68, 68];
+          }
+        }
+      },
+    });
+
+    const finalY = doc.lastAutoTable.finalY + 8;
+    const pageHeight = doc.internal.pageSize.height;
+    if (finalY + 15 < pageHeight) {
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text("Signature technicien : ___________________", 14, finalY + 8);
+      doc.text("Visa direction : ___________________", 110, finalY + 8);
+    }
   });
-
-  const finalY = doc.lastAutoTable.finalY + 15;
-  doc.setFontSize(10);
-  doc.setTextColor(71, 85, 105);
-  doc.text("Visa de clôture annuelle de l'établissement :", 14, finalY);
-  doc.text("Le Responsable Technique : ___________________", 14, finalY + 15);
-  doc.text("La Direction : ___________________", 110, finalY + 15);
 
   doc.save(`registre_annuel_maintenance_${year}.pdf`);
 }
