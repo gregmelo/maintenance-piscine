@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import * as XLSX from "xlsx";
 
 /**
  * Extrait une chaîne de caractères propre, même si la valeur est un objet
@@ -21,17 +22,7 @@ export function exportTasksToCSV(tasks, monthName, year) {
     return;
   }
 
-  const headers = [
-    "Catégorie",
-    "Point de contrôle",
-    "Périodicité",
-    "Statut",
-    "Opérateur",
-    "Date de réalisation",
-    "Observations / Réserve",
-  ];
-
-  const rows = tasks.map((t) => {
+  const data = tasks.map((t) => {
     let dateStr = "";
     if (t.completedAt) {
       try {
@@ -42,44 +33,33 @@ export function exportTasksToCSV(tasks, monthName, year) {
       }
     }
 
-    const statutLabel =
-      t.status === "FAIT"
-        ? "FAIT"
-        : t.status === "RESERVE"
-        ? "RESERVE"
-        : "A FAIRE";
-
-    const catStr = toText(t.category);
-    const titleStr = toText(t.title);
-    const freqStr = toText(t.frequency);
-    const userStr = toText(t.updatedBy);
-    const obsStr = toText(t.observation);
-
-    return [
-      `"${catStr.replace(/"/g, '""')}"`,
-      `"${titleStr.replace(/"/g, '""')}"`,
-      `"${freqStr.replace(/"/g, '""')}"`,
-      `"${statutLabel}"`,
-      `"${userStr.replace(/"/g, '""')}"`,
-      `"${dateStr}"`,
-      `"${obsStr.replace(/"/g, '""')}"`,
-    ].join(";");
+    return {
+      "Catégorie": toText(t.category) || "—",
+      "Point de contrôle": toText(t.title),
+      "Périodicité": toText(t.frequency),
+      "Statut": t.status === "FAIT" ? "FAIT" : t.status === "RESERVE" ? "RÉSERVE" : "À FAIRE",
+      "Opérateur": toText(t.updatedBy),
+      "Date de réalisation": dateStr,
+      "Observations / Réserve": toText(t.observation),
+    };
   });
 
-  const csvContent = "\uFEFF" + [headers.join(";"), ...rows].join("\r\n");
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
+  const worksheet = XLSX.utils.json_to_sheet(data);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Maintenance");
 
-  const link = document.createElement("a");
-  link.setAttribute("href", url);
-  link.setAttribute(
-    "download",
-    `registre_maintenance_${monthName.toLowerCase()}_${year}.csv`
-  );
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  // Ajustement automatique des largeurs de colonnes
+  worksheet["!cols"] = [
+    { wch: 24 },
+    { wch: 45 },
+    { wch: 14 },
+    { wch: 12 },
+    { wch: 16 },
+    { wch: 20 },
+    { wch: 35 },
+  ];
+
+  XLSX.writeFile(workbook, `registre_maintenance_${monthName.toLowerCase()}_${year}.xlsx`);
 }
 
 /**
