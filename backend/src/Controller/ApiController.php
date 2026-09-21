@@ -15,6 +15,7 @@ use Symfony\Component\Routing\Annotation\Route;
 #[Route('/api', name: 'api_')]
 class ApiController extends AbstractController
 {
+    // Toutes les routes API utilisent cette cle avant d'acceder aux donnees metier.
     private function isAuthorized(Request $request): bool
     {
         $apiKey = $request->headers->get('X-API-KEY');
@@ -81,6 +82,7 @@ class ApiController extends AbstractController
 
         $result = [];
         foreach ($tasks as $task) {
+            // Une tache est due si sa periodicite tombe sur le mois consulte.
             $start = $task->getStartMonth();
             $interval = $task->getIntervalMonths();
             $isDue = ($interval <= 1) || (($month - $start) >= 0 && (($month - $start) % $interval === 0));
@@ -127,6 +129,7 @@ class ApiController extends AbstractController
             mkdir($uploadDir, 0777, true);
         }
 
+        // Les changements hors ligne sont rejoues dans la meme transaction Doctrine.
         foreach ($updates as $item) {
             $task = $taskRepo->find((int)($item['taskId'] ?? 0));
             if (!$task) {
@@ -164,7 +167,7 @@ class ApiController extends AbstractController
                 $log->setCompletedAt(null);
             }
 
-            // Traitement de l'image base64
+            // L'image est materialisee sur le serveur et l'ancien fichier est supprime.
             if (!empty($item['photoBase64']) && str_starts_with($item['photoBase64'], 'data:image/')) {
                 $parts = explode(',', $item['photoBase64']);
                 if (count($parts) === 2) {
@@ -311,6 +314,7 @@ class ApiController extends AbstractController
 
         $monthsSummary = [];
 
+        // Le calcul reprend la meme regle d'echeance que la liste mensuelle.
         for ($m = 1; $m <= 12; $m++) {
             $dueCount = 0;
             $doneCount = 0;
@@ -465,6 +469,7 @@ class ApiController extends AbstractController
             $log->setPhotoUrl(null);
         }
 
+        // La resolution conserve la trace de l'anomalie dans l'observation du journal.
         $log->setStatus('FAIT');
         $log->setUpdatedBy($user);
         $log->setCompletedAt(new \DateTimeImmutable());

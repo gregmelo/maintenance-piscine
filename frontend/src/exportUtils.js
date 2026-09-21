@@ -211,6 +211,7 @@ export function exportAnnualReportToPDF(annualData, year) {
 
   let currentY = 42;
 
+  // Chaque mois est ajoute au fil du document afin de conserver l'ordre annuel.
   annualData.months.forEach((mObj, idx) => {
     const monthName = MONTH_NAMES[mObj.month - 1];
     const tasks = mObj.tasks || [];

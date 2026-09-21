@@ -1,4 +1,5 @@
 export function compressImage(file, maxWidth = 1200, quality = 0.7) {
+  // Les photos sont reduites avant stockage local et envoi pour limiter la taille des donnees.
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);

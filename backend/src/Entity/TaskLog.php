@@ -10,6 +10,7 @@ use Doctrine\ORM\Mapping as ORM;
 ])]
 class TaskLog
 {
+    // La contrainte unique garantit un seul resultat par tache, annee et mois.
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -45,6 +46,7 @@ class TaskLog
 
     public function __construct()
     {
+        // La date de modification est initialisee des la creation du journal.
         $this->updatedAt = new \DateTimeImmutable();
     }
 

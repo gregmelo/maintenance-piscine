@@ -32,6 +32,7 @@ import { useRegisterSW } from "virtual:pwa-register/react";
 
 const API_BASE_URL = "https://vericelgregory.alwaysdata.net/piscine/api";
 
+// Les libelles sont partages par le selecteur de mois et les exports.
 const MONTH_NAMES = [
   "Janvier",
   "Février",
@@ -110,6 +111,7 @@ export default function App() {
   useEffect(() => {
     let isMounted = true;
 
+    // Le service choisit automatiquement l'API ou le cache IndexedDB.
     async function loadData() {
       const {
         data,
@@ -142,6 +144,7 @@ export default function App() {
   }, [selectedYear, selectedMonth]);
 
   useEffect(() => {
+    // Une reconnexion relance la file locale des modifications en attente.
     const handleStatus = () => {
       const online = navigator.onLine;
       setIsOnline(online);
@@ -164,6 +167,7 @@ export default function App() {
   };
 
   const handleStatusChange = async (taskId, newStatus) => {
+    // Le statut, la note et la photo sont envoyes ensemble pour conserver un journal coherent.
     const currentNote = notes[taskId] || "";
     const currentPhoto = photos[taskId] || null;
     const isDoneOrReserve = newStatus === "FAIT" || newStatus === "RESERVE";
@@ -243,6 +247,7 @@ export default function App() {
   };
 
   const openTaskHistory = async (task) => {
+    // L'historique est charge a l'ouverture afin de ne pas alourdir la liste principale.
     setHistoryTask(task);
     setLoadingHistory(true);
     try {
@@ -260,7 +265,7 @@ export default function App() {
     }
   };
 
-  // Filtrage combiné : recherche textuelle et affichage des tâches restantes
+  // Filtrage combine : recherche textuelle et affichage optionnel des taches restantes.
   const filteredTasks = tasks.filter((task) => {
     const matchesSearch =
       task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -280,6 +285,7 @@ export default function App() {
   }, {});
 
   Object.keys(groupedTasks).forEach((cat) => {
+    // Les controles a faire restent visibles avant ceux deja traites.
     groupedTasks[cat].sort((a, b) => {
       if (a.isDue && !b.isDue) return -1;
       if (!a.isDue && b.isDue) return 1;

@@ -18,6 +18,7 @@ import { exportAnnualReportToPDF } from "./exportUtils";
 
 const API_BASE_URL = "https://vericelgregory.alwaysdata.net/piscine/api";
 
+// Cette liste alimente les libelles du bilan annuel et du formulaire des taches.
 const MONTH_NAMES = [
   "Janvier",
   "Février",
@@ -79,6 +80,7 @@ export default function AdminDashboard({
   const apiKey = getApiKey();
 
   const handleLogin = async (e) => {
+    // Le serveur valide le PIN et renvoie un jeton de session temporaire.
     e.preventDefault();
     if (!pinInput.trim()) return;
 
@@ -147,6 +149,7 @@ export default function AdminDashboard({
   };
 
   const handleCleanupPhotos = async () => {
+    // Le nettoyage est volontairement declenche par le responsable pour eviter une suppression implicite.
     if (!window.confirm("Nettoyer toutes les photos orphelines du serveur ?")) return;
     setCleaningPhotos(true);
     setCleanupResult(null);
@@ -167,6 +170,7 @@ export default function AdminDashboard({
   };
 
   const handleExportAnnualPDF = async () => {
+    // Le serveur fournit les donnees completes ; le navigateur ne fait que produire le PDF.
     setDownloadingAnnualPdf(true);
     try {
       const res = await fetch(`${API_BASE_URL}/admin/annual-report?year=${summaryYear}`, {
@@ -261,6 +265,7 @@ export default function AdminDashboard({
     let isMounted = true;
 
     async function initData() {
+      // Ces trois ressources sont independantes et peuvent etre chargees en parallele.
       try {
         const d = new Date();
         const [reservesRes, tasksRes, summaryRes] = await Promise.all([
@@ -305,6 +310,7 @@ export default function AdminDashboard({
   }, [isAdminAuth, apiKey, summaryYear]);
 
   const handleResolve = async (logId) => {
+    // Une reserve resolue devient une realisation et conserve sa note dans l'historique.
     try {
       const res = await fetch(
         `${API_BASE_URL}/admin/reserves/${logId}/resolve`,
@@ -395,6 +401,7 @@ export default function AdminDashboard({
   };
 
   const handleDeleteTask = async (taskId, title) => {
+    // La confirmation protege aussi l'historique associe a la tache.
     if (
       !window.confirm(
         `Supprimer définitivement la tâche « ${title} » et tout son historique ?`,

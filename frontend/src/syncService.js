@@ -2,6 +2,7 @@ import { db } from './db';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api';
 
+// La cle peut etre fournie par l'environnement puis personnalisee depuis les reglages.
 export function getApiKey() {
   return localStorage.getItem('pool_api_key') || import.meta.env.VITE_API_KEY || '';
 }
@@ -39,6 +40,7 @@ export async function fetchTasks(year, month) {
 }
 
 export async function updateTaskStatus(taskId, year, month, status, observation, user, completedAt = null, photoBase64 = null) {
+  // Ecriture optimiste : l'interface est immediatement utilisable, puis la file sera envoyee.
   const item = await db.tasksCache.get(taskId);
   if (item) {
     item.status = status;
@@ -70,6 +72,7 @@ export async function triggerSync() {
   if (!navigator.onLine) return;
 
   const apiKey = getApiKey();
+  // On conserve les modifications tant que l'API n'a pas confirme leur traitement.
   const pending = await db.syncQueue.toArray();
   if (pending.length === 0) return;
 

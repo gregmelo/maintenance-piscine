@@ -7,6 +7,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity]
 class Category
 {
+    // Les categories sont referencees par les taches pour eviter de dupliquer leur nom.
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]

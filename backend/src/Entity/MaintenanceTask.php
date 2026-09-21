@@ -7,6 +7,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity]
 class MaintenanceTask
 {
+    // Une tache est un controle recurrent ; son journal mensuel est stocke dans TaskLog.
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
