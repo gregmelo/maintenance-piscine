@@ -1,0 +1,29 @@
+.app-shell { min-height: 100vh; background-color: #f1f5f9; font-family: system-ui, -apple-system, sans-serif; padding: 16px; }
+.app-container { max-width: 1100px; margin: 0 auto; }
+.update-banner { width: 100%; box-sizing: border-box; background: #0284c7; color: #fff; padding: 10px 16px; border-radius: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,.1); }
+.update-banner span { font-size: .9rem; font-weight: 500; }
+.update-banner button { background: #fff; color: #0284c7; border: 0; border-radius: 6px; padding: 6px 14px; font-weight: 700; font-size: .85rem; cursor: pointer; }
+.connection-status { display: flex; align-items: center; gap: 6px; font-size: .85rem; padding: 6px 12px; border-radius: 20px; font-weight: 500; }
+.connection-status.is-online { background: #dcfce7; color: #166534; } .connection-status.is-offline { background: #fee2e2; color: #991b1b; }
+.print-signature { margin-top: 40px; padding: 16px; border: 1px solid #94a3b8; border-radius: 8px; page-break-inside: avoid; }
+.print-signature h4 { margin: 0 0 10px; } .print-signature p { font-size: .85rem; color: #334155; margin: 0 0 40px; }
+.print-signature__fields { display: flex; justify-content: space-between; }
+.history-modal, .photo-lightbox { position: fixed; inset: 0; display: flex; justify-content: center; align-items: center; z-index: 9999; box-sizing: border-box; }
+.history-modal { background: rgba(15,23,42,.6); backdrop-filter: blur(4px); padding: 16px; }
+.history-modal__card { background: #fff; border-radius: 14px; width: 100%; max-width: 560px; max-height: 80vh; display: flex; flex-direction: column; padding: 20px; box-sizing: border-box; }
+.history-modal__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; }
+.history-modal__header h3 { margin: 0; font-size: 1.1rem; color: #0f172a; } .history-modal__header span, .history-modal__body p { font-size: .8rem; color: #64748b; }
+.history-modal__header button, .photo-lightbox button { background: none; border: 0; cursor: pointer; color: #64748b; }
+.history-modal__body { flex: 1; overflow-y: auto; padding-right: 4px; } .history-list { display: flex; flex-direction: column; gap: 10px; }
+.history-entry { padding: 10px 14px; border-radius: 8px; border: 1px solid #e2e8f0; } .history-entry.done { background: #f0fdf4; } .history-entry.reserved { background: #fffbeb; } .history-entry.todo { background: #fef2f2; }
+.history-entry__heading { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: .85rem; color: #1e293b; } .history-entry__heading strong { color: #16a34a; } .history-entry.reserved .history-entry__heading strong { color: #d97706; } .history-entry.todo .history-entry__heading strong { color: #ef4444; }
+.history-entry__meta, .history-entry__note { font-size: .75rem; color: #64748b; } .history-entry__note { font-size: .8rem; margin-top: 4px; color: #334155; font-style: italic; }
+.history-entry__photo { width: 45px; height: 45px; object-fit: cover; border-radius: 6px; border: 1px solid #cbd5e1; cursor: pointer; margin-top: 6px; }
+.photo-lightbox { background: rgba(15,23,42,.85); padding: 20px; } .photo-lightbox__content { position: relative; max-width: 90vw; max-height: 90vh; display: flex; flex-direction: column; align-items: center; }
+.photo-lightbox button { position: absolute; top: -45px; right: 0; color: #fff; display: flex; align-items: center; gap: 6px; font-size: .9rem; } .photo-lightbox img { max-width: 100%; max-height: 85vh; object-fit: contain; border-radius: 8px; box-shadow: 0 20px 25px -5px rgba(0,0,0,.5); border: 2px solid #334155; }
+@media print { header button, .no-print, input, textarea, select { display: none !important; } body, #root { background: #fff !important; padding: 0 !important; } .print-only { display: block !important; } .page-break { page-break-inside: avoid; } }
+@media screen { .print-only { display: none; } }
+
+.admin-tabs { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+.admin-tabs button { padding: 8px 16px; border-radius: 8px; border: 0; cursor: pointer; font-weight: 600; font-size: .9rem; display: flex; align-items: center; gap: 6px; background: #f1f5f9; color: #475569; }
+.admin-tabs button.is-active { background: #0284c7; color: #fff; }

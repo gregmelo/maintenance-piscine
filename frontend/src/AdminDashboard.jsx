@@ -6,7 +6,6 @@ import {
   CheckCircle,
   X,
   Lock,
-  BarChart3,
   KeyRound,
   Database,
   Pencil,
@@ -15,6 +14,8 @@ import {
 } from "lucide-react";
 import { getApiKey } from "./syncService";
 import { exportAnnualReportToPDF } from "./exportUtils";
+import AdminTabs from "./components/AdminTabs";
+import "./App.css";
 
 const API_BASE_URL = "https://vericelgregory.alwaysdata.net/piscine/api";
 
@@ -569,82 +570,12 @@ export default function AdminDashboard({
           </button>
         </div>
 
-        {/* ONGLETS NAVIGATION */}
-        <div
-          style={{
-            display: "flex",
-            gap: "10px",
-            marginBottom: "16px",
-            flexWrap: "wrap",
-          }}
-        >
-          <button
-            onClick={() => setActiveTab("summary")}
-            style={{
-              padding: "8px 16px",
-              borderRadius: "8px",
-              border: "none",
-              cursor: "pointer",
-              fontWeight: "600",
-              fontSize: "0.9rem",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              backgroundColor: activeTab === "summary" ? "#0284c7" : "#f1f5f9",
-              color: activeTab === "summary" ? "#ffffff" : "#475569",
-            }}
-          >
-            <BarChart3 size={16} /> Synthèse annuelle
-          </button>
-          <button
-            onClick={() => setActiveTab("reserves")}
-            style={{
-              padding: "8px 16px",
-              borderRadius: "8px",
-              border: "none",
-              cursor: "pointer",
-              fontWeight: "600",
-              fontSize: "0.9rem",
-              backgroundColor: activeTab === "reserves" ? "#0284c7" : "#f1f5f9",
-              color: activeTab === "reserves" ? "#ffffff" : "#475569",
-            }}
-          >
-            Réserves en cours ({reserves.length})
-          </button>
-          <button
-            onClick={() => setActiveTab("tasks")}
-            style={{
-              padding: "8px 16px",
-              borderRadius: "8px",
-              border: "none",
-              cursor: "pointer",
-              fontWeight: "600",
-              fontSize: "0.9rem",
-              backgroundColor: activeTab === "tasks" ? "#0284c7" : "#f1f5f9",
-              color: activeTab === "tasks" ? "#ffffff" : "#475569",
-            }}
-          >
-            Gestion des tâches ({tasksList.length})
-          </button>
-          <button
-            onClick={() => setActiveTab("security")}
-            style={{
-              padding: "8px 16px",
-              borderRadius: "8px",
-              border: "none",
-              cursor: "pointer",
-              fontWeight: "600",
-              fontSize: "0.9rem",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              backgroundColor: activeTab === "security" ? "#0284c7" : "#f1f5f9",
-              color: activeTab === "security" ? "#ffffff" : "#475569",
-            }}
-          >
-            <KeyRound size={16} /> Sécurité & Système
-          </button>
-        </div>
+        <AdminTabs
+          activeTab={activeTab}
+          reserveCount={reserves.length}
+          taskCount={tasksList.length}
+          onChange={setActiveTab}
+        />
 
         {/* CONTENU ONGLET 1 : SYNTHÈSE ANNUELLE */}
         {activeTab === "summary" && (

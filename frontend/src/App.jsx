@@ -12,8 +12,6 @@ import {
   Circle,
   ChevronDown,
   ChevronRight,
-  Wifi,
-  WifiOff,
   Settings,
   MessageSquare,
   Camera,
@@ -29,6 +27,10 @@ import { compressImage } from "./imageUtils";
 import AdminDashboard from "./AdminDashboard";
 import { exportTasksToExcel, exportTasksToPDF } from "./exportUtils";
 import { useRegisterSW } from "virtual:pwa-register/react";
+import "./App.css";
+import ConnectionStatus from "./components/ConnectionStatus";
+import PrintSignature from "./components/PrintSignature";
+import UpdateBanner from "./components/UpdateBanner";
 
 const API_BASE_URL = "https://vericelgregory.alwaysdata.net/piscine/api";
 
@@ -302,38 +304,8 @@ export default function App() {
       : 0;
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        backgroundColor: "#f1f5f9",
-        fontFamily: "system-ui, -apple-system, sans-serif",
-        padding: "16px",
-      }}
-    >
-      <style>{`
-        @media print {
-          header button, .no-print, input, textarea, select {
-            display: none !important;
-          }
-          body, #root {
-            background-color: #ffffff !important;
-            padding: 0 !important;
-          }
-          .print-only {
-            display: block !important;
-          }
-          .page-break {
-            page-break-inside: avoid;
-          }
-        }
-        @media screen {
-          .print-only {
-            display: none;
-          }
-        }
-      `}</style>
-
-      <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
+    <div className="app-shell">
+      <div className="app-container">
         {/* EN-TÊTE */}
         <header
           style={{
@@ -349,41 +321,7 @@ export default function App() {
             boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
           }}
         >
-          {needRefresh && (
-            <div
-              style={{
-                width: "100%",
-                backgroundColor: "#0284c7",
-                color: "#ffffff",
-                padding: "10px 16px",
-                borderRadius: "10px",
-                marginBottom: "10px",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)",
-              }}
-            >
-              <span style={{ fontSize: "0.9rem", fontWeight: "500" }}>
-                Une nouvelle version est disponible !
-              </span>
-              <button
-                onClick={() => updateServiceWorker(true)}
-                style={{
-                  backgroundColor: "#ffffff",
-                  color: "#0284c7",
-                  border: "none",
-                  borderRadius: "6px",
-                  padding: "6px 14px",
-                  fontWeight: "bold",
-                  fontSize: "0.85rem",
-                  cursor: "pointer",
-                }}
-              >
-                Mettre à jour
-              </button>
-            </div>
-          )}
+          {needRefresh && <UpdateBanner onUpdate={() => updateServiceWorker(true)} />}
 
           <div>
             <h1
@@ -412,22 +350,7 @@ export default function App() {
             style={{ display: "flex", alignItems: "center", gap: "10px" }}
             className="no-print"
           >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                fontSize: "0.85rem",
-                padding: "6px 12px",
-                borderRadius: "20px",
-                backgroundColor: isOnline ? "#dcfce7" : "#fee2e2",
-                color: isOnline ? "#166534" : "#991b1b",
-                fontWeight: "500",
-              }}
-            >
-              {isOnline ? <Wifi size={16} /> : <WifiOff size={16} />}
-              {isOnline ? "Connecté" : "Hors-ligne"}
-            </div>
+            <ConnectionStatus isOnline={isOnline} />
             <button
               onClick={() => setShowSettings(!showSettings)}
               style={{
@@ -1255,34 +1178,10 @@ export default function App() {
         </div>
 
         {/* CARTOUCHE D'ÉMARGEMENT POUR L'IMPRESSION RÉGLEMENTAIRE */}
-        <div
-          className="print-only"
-          style={{
-            marginTop: "40px",
-            padding: "16px",
-            border: "1px solid #94a3b8",
-            borderRadius: "8px",
-            pageBreakInside: "avoid",
-          }}
-        >
-          <h4 style={{ margin: "0 0 10px 0" }}>
-            Émargement et validation réglementaire
-          </h4>
-          <p
-            style={{
-              fontSize: "0.85rem",
-              color: "#334155",
-              margin: "0 0 40px 0",
-            }}
-          >
-            Registre de vérifications périodiques — Mois de{" "}
-            {MONTH_NAMES[selectedMonth - 1]} {selectedYear}
-          </p>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <div>Signature du technicien : ___________________</div>
-            <div>Visa de la direction / régie : ___________________</div>
-          </div>
-        </div>
+        <PrintSignature
+          month={MONTH_NAMES[selectedMonth - 1]}
+          year={selectedYear}
+        />
 
         {/* MODALE HISTORIQUE D'UNE TÂCHE */}
         {historyTask && (
