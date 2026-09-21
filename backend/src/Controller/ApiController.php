@@ -2,9 +2,9 @@
 
 namespace App\Controller;
 
-use App\Entity\Category;
 use App\Entity\MaintenanceTask;
 use App\Entity\TaskLog;
+use App\Service\TaskScheduleService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -15,56 +15,10 @@ use Symfony\Component\Routing\Annotation\Route;
 #[Route('/api', name: 'api_')]
 class ApiController extends AbstractController
 {
-    // Toutes les routes API utilisent cette cle avant d'acceder aux donnees metier.
-    private function isAuthorized(Request $request): bool
+    use ApiControllerSupportTrait;
+
+    public function __construct(private readonly TaskScheduleService $taskSchedule)
     {
-        $apiKey = $request->headers->get('X-API-KEY');
-        $expectedKey = $_ENV['APP_API_KEY'] ?? 'piscine-amberieu-secret-key-2026';
-
-        return $apiKey === $expectedKey;
-    }
-
-    /**
-     * Helper pour extraire le nom textuel d'une catégorie qu'elle soit entité ou string
-     */
-    private function getCategoryName(mixed $category): string
-    {
-        if (!$category) {
-            return 'Général';
-        }
-        if (is_object($category)) {
-            if (method_exists($category, 'getName')) {
-                return (string)$category->getName();
-            }
-            if (method_exists($category, 'getTitle')) {
-                return (string)$category->getTitle();
-            }
-            if (method_exists($category, '__toString')) {
-                return (string)$category;
-            }
-        }
-        return (string)$category;
-    }
-
-    /**
-     * Helper pour trouver ou créer l'entité Category
-     */
-    private function findOrCreateCategory(string $categoryName, EntityManagerInterface $em): Category
-    {
-        $catRepo = $em->getRepository(Category::class);
-        $category = $catRepo->findOneBy(['name' => $categoryName]);
-
-        if (!$category) {
-            $category = new Category();
-            if (method_exists($category, 'setName')) {
-                $category->setName($categoryName);
-            } elseif (method_exists($category, 'setTitle')) {
-                $category->setTitle($categoryName);
-            }
-            $em->persist($category);
-        }
-
-        return $category;
     }
 
     #[Route('/tasks', name: 'tasks_list', methods: ['GET'])]
@@ -83,9 +37,7 @@ class ApiController extends AbstractController
         $result = [];
         foreach ($tasks as $task) {
             // Une tache est due si sa periodicite tombe sur le mois consulte.
-            $start = $task->getStartMonth();
-            $interval = $task->getIntervalMonths();
-            $isDue = ($interval <= 1) || (($month - $start) >= 0 && (($month - $start) % $interval === 0));
+            $isDue = $this->taskSchedule->isDue($task, $month);
 
             $log = $logRepo->findOneBy([
                 'task' => $task,
@@ -321,9 +273,7 @@ class ApiController extends AbstractController
             $reserveCount = 0;
 
             foreach ($tasks as $task) {
-                $start = $task->getStartMonth();
-                $interval = $task->getIntervalMonths();
-                $isDue = ($interval <= 1) || (($m - $start) >= 0 && (($m - $start) % $interval === 0));
+                $isDue = $this->taskSchedule->isDue($task, $m);
 
                 if (!$isDue) continue;
 
@@ -380,9 +330,7 @@ class ApiController extends AbstractController
             $monthTasks = [];
 
             foreach ($tasks as $task) {
-                $start = $task->getStartMonth();
-                $interval = $task->getIntervalMonths();
-                $isDue = ($interval <= 1) || (($m - $start) >= 0 && (($m - $start) % $interval === 0));
+                $isDue = $this->taskSchedule->isDue($task, $m);
 
                 if (!$isDue) continue;
 
