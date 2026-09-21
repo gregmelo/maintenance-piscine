@@ -2,6 +2,7 @@
 
 namespace App\Controller;
 
+use App\Entity\Category;
 use App\Entity\MaintenanceTask;
 use App\Entity\TaskLog;
 use Doctrine\ORM\EntityManagerInterface;
@@ -20,6 +21,49 @@ class ApiController extends AbstractController
         $expectedKey = $_ENV['APP_API_KEY'] ?? 'piscine-amberieu-secret-key-2026';
 
         return $apiKey === $expectedKey;
+    }
+
+    /**
+     * Helper pour extraire le nom textuel d'une catégorie qu'elle soit entité ou string
+     */
+    private function getCategoryName(mixed $category): string
+    {
+        if (!$category) {
+            return 'Général';
+        }
+        if (is_object($category)) {
+            if (method_exists($category, 'getName')) {
+                return (string)$category->getName();
+            }
+            if (method_exists($category, 'getTitle')) {
+                return (string)$category->getTitle();
+            }
+            if (method_exists($category, '__toString')) {
+                return (string)$category;
+            }
+        }
+        return (string)$category;
+    }
+
+    /**
+     * Helper pour trouver ou créer l'entité Category
+     */
+    private function findOrCreateCategory(string $categoryName, EntityManagerInterface $em): Category
+    {
+        $catRepo = $em->getRepository(Category::class);
+        $category = $catRepo->findOneBy(['name' => $categoryName]);
+
+        if (!$category) {
+            $category = new Category();
+            if (method_exists($category, 'setName')) {
+                $category->setName($categoryName);
+            } elseif (method_exists($category, 'setTitle')) {
+                $category->setTitle($categoryName);
+            }
+            $em->persist($category);
+        }
+
+        return $category;
     }
 
     #[Route('/tasks', name: 'tasks_list', methods: ['GET'])]
@@ -50,7 +94,7 @@ class ApiController extends AbstractController
             $result[] = [
                 'id' => $task->getId(),
                 'title' => $task->getTitle(),
-                'category' => $task->getCategory(),
+                'category' => $this->getCategoryName($task->getCategory()),
                 'frequency' => $task->getFrequency(),
                 'startMonth' => $task->getStartMonth(),
                 'isDue' => $isDue,
@@ -112,15 +156,15 @@ class ApiController extends AbstractController
 
             if (!empty($item['completedAt'])) {
                 try {
-                    $log->setCompletedAt(new \DateTime($item['completedAt']));
+                    $log->setCompletedAt(new \DateTimeImmutable($item['completedAt']));
                 } catch (\Exception) {
-                    $log->setCompletedAt(new \DateTime());
+                    $log->setCompletedAt(new \DateTimeImmutable());
                 }
             } else {
                 $log->setCompletedAt(null);
             }
 
-            // Gestion de la photo base64
+            // Traitement de l'image base64
             if (!empty($item['photoBase64']) && str_starts_with($item['photoBase64'], 'data:image/')) {
                 $parts = explode(',', $item['photoBase64']);
                 if (count($parts) === 2) {
@@ -181,7 +225,7 @@ class ApiController extends AbstractController
             'task' => [
                 'id' => $task->getId(),
                 'title' => $task->getTitle(),
-                'category' => $task->getCategory(),
+                'category' => $this->getCategoryName($task->getCategory()),
                 'frequency' => $task->getFrequency(),
             ],
             'history' => $history,
@@ -343,7 +387,7 @@ class ApiController extends AbstractController
                 $monthTasks[] = [
                     'id' => $task->getId(),
                     'title' => $task->getTitle(),
-                    'category' => $task->getCategory(),
+                    'category' => $this->getCategoryName($task->getCategory()),
                     'frequency' => $task->getFrequency(),
                     'status' => $log ? $log->getStatus() : 'A_FAIRE',
                     'updatedBy' => $log ? $log->getUpdatedBy() : null,
@@ -383,7 +427,7 @@ class ApiController extends AbstractController
                 'logId' => $log->getId(),
                 'taskId' => $task ? $task->getId() : null,
                 'taskTitle' => $task ? $task->getTitle() : 'Inconnue',
-                'category' => $task ? $task->getCategory() : 'Non classé',
+                'category' => $task ? $this->getCategoryName($task->getCategory()) : 'Non classé',
                 'year' => $log->getYear(),
                 'month' => $log->getMonth(),
                 'observation' => $log->getObservation(),
@@ -423,7 +467,7 @@ class ApiController extends AbstractController
 
         $log->setStatus('FAIT');
         $log->setUpdatedBy($user);
-        $log->setCompletedAt(new \DateTime());
+        $log->setCompletedAt(new \DateTimeImmutable());
 
         if ($resolutionNote !== '') {
             $existing = $log->getObservation() ? $log->getObservation() . ' | ' : '';
@@ -444,13 +488,15 @@ class ApiController extends AbstractController
 
         $data = json_decode($request->getContent(), true) ?? [];
         $title = trim($data['title'] ?? '');
-        $category = trim($data['category'] ?? 'Sécurité');
+        $categoryName = trim($data['category'] ?? 'Sécurité Incendie');
         $frequency = trim($data['frequency'] ?? 'Mensuel');
         $startMonth = (int)($data['startMonth'] ?? 1);
 
         if ($title === '') {
             return $this->json(['error' => 'Le titre est obligatoire'], Response::HTTP_BAD_REQUEST);
         }
+
+        $category = $this->findOrCreateCategory($categoryName, $em);
 
         $task = new MaintenanceTask();
         $task->setTitle($title);
@@ -480,8 +526,9 @@ class ApiController extends AbstractController
         if (isset($data['title']) && trim($data['title']) !== '') {
             $task->setTitle(trim($data['title']));
         }
-        if (isset($data['category'])) {
-            $task->setCategory($data['category']);
+        if (isset($data['category']) && trim($data['category']) !== '') {
+            $category = $this->findOrCreateCategory(trim($data['category']), $em);
+            $task->setCategory($category);
         }
         if (isset($data['frequency'])) {
             $task->setFrequency($data['frequency']);

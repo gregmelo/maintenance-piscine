@@ -2,6 +2,17 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
 /**
+ * Extrait une chaîne de caractères propre, même si la valeur est un objet
+ */
+function toText(val) {
+  if (val === null || val === undefined) return "";
+  if (typeof val === "object") {
+    return val.name || val.title || val.label || JSON.stringify(val);
+  }
+  return String(val);
+}
+
+/**
  * Exporte un tableau de tâches au format CSV UTF-8
  */
 export function exportTasksToCSV(tasks, monthName, year) {
@@ -27,7 +38,7 @@ export function exportTasksToCSV(tasks, monthName, year) {
         const d = new Date(t.completedAt);
         dateStr = d.toLocaleString("fr-FR");
       } catch {
-        dateStr = t.completedAt;
+        dateStr = String(t.completedAt);
       }
     }
 
@@ -38,14 +49,20 @@ export function exportTasksToCSV(tasks, monthName, year) {
         ? "RESERVE"
         : "A FAIRE";
 
+    const catStr = toText(t.category);
+    const titleStr = toText(t.title);
+    const freqStr = toText(t.frequency);
+    const userStr = toText(t.updatedBy);
+    const obsStr = toText(t.observation);
+
     return [
-      `"${(t.category || "").replace(/"/g, '""')}"`,
-      `"${(t.title || "").replace(/"/g, '""')}"`,
-      `"${(t.frequency || "").replace(/"/g, '""')}"`,
+      `"${catStr.replace(/"/g, '""')}"`,
+      `"${titleStr.replace(/"/g, '""')}"`,
+      `"${freqStr.replace(/"/g, '""')}"`,
       `"${statutLabel}"`,
-      `"${(t.updatedBy || "").replace(/"/g, '""')}"`,
+      `"${userStr.replace(/"/g, '""')}"`,
       `"${dateStr}"`,
-      `"${(t.observation || "").replace(/"/g, '""')}"`,
+      `"${obsStr.replace(/"/g, '""')}"`,
     ].join(";");
   });
 
@@ -62,6 +79,7 @@ export function exportTasksToCSV(tasks, monthName, year) {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 /**
@@ -106,14 +124,20 @@ export function exportTasksToPDF(tasks, monthName, year) {
         ? "RÉSERVE"
         : "À FAIRE";
 
+    const catStr = toText(t.category) || "—";
+    const titleStr = toText(t.title);
+    const freqStr = toText(t.frequency);
+    const userStr = toText(t.updatedBy);
+    const obsStr = toText(t.observation);
+
     const details = [
-      t.updatedBy ? `Par: ${t.updatedBy} (${dateStr})` : "",
-      t.observation ? `Note: ${t.observation}` : "",
+      userStr ? `Par : ${userStr} (${dateStr})` : "",
+      obsStr ? `Note : ${obsStr}` : "",
     ]
       .filter(Boolean)
       .join("\n");
 
-    return [t.category || "—", t.title, t.frequency, statut, details || "—"];
+    return [catStr, titleStr, freqStr, statut, details || "—"];
   });
 
   autoTable(doc, {
@@ -236,12 +260,18 @@ export function exportAnnualReportToPDF(annualData, year) {
       const statut =
         t.status === "FAIT" ? "FAIT" : t.status === "RESERVE" ? "RÉSERVE" : "À FAIRE";
 
+      const catStr = toText(t.category) || "—";
+      const titleStr = toText(t.title);
+      const freqStr = toText(t.frequency);
+      const userStr = toText(t.updatedBy);
+      const obsStr = toText(t.observation);
+
       const details = [
-        t.updatedBy ? `Par: ${t.updatedBy} (${dateStr})` : "",
-        t.observation ? `Note: ${t.observation}` : "",
+        userStr ? `Par : ${userStr} (${dateStr})` : "",
+        obsStr ? `Note : ${obsStr}` : "",
       ].filter(Boolean).join("\n");
 
-      return [t.category || "—", t.title, t.frequency, statut, details || "—"];
+      return [catStr, titleStr, freqStr, statut, details || "—"];
     });
 
     autoTable(doc, {
