@@ -31,7 +31,11 @@ L'application permet de consulter les opérations prévues pour un mois donné, 
 - Statistiques de suivi : tâches dues, tâches réalisées et tâches réservées.
 - États disponibles : `A_FAIRE`, `FAIT` et `RESERVE`.
 - Ajout et modification d'une observation par tâche.
+- Ajout d'une photo compressée pour documenter une tâche ou une réserve.
 - Identification de l'utilisateur ayant effectué la dernière modification.
+- Historique mensuel d'une tâche.
+- Espace administrateur protégé par PIN : réserves, tâches, synthèse annuelle et sauvegarde.
+- Exports mensuels Excel/PDF et rapport annuel PDF.
 - Fonctionnement hors ligne grâce à IndexedDB et Dexie.
 - Synchronisation automatique de la file locale dès que le navigateur revient en ligne.
 - Installation possible comme application grâce au support PWA.
@@ -72,7 +76,6 @@ maintenance-piscine/
 
 **Backend**
 
-- PHP 8.2 ou supérieur
 - Symfony 7.4
 - Doctrine ORM 3.7
 - SQLite par défaut en développement
@@ -82,8 +85,6 @@ maintenance-piscine/
 ## Prérequis
 
 Installer les outils suivants :
-
-- PHP `>= 8.2` avec les extensions `ctype` et `iconv`.
 - Composer.
 - Node.js et npm.
 - Un navigateur récent prenant en charge Fetch, IndexedDB et les service workers.
@@ -146,8 +147,6 @@ Les variables `VITE_*` sont intégrées au bundle frontend. Elles ne doivent don
 ## Configuration
 
 ### Backend
-
-Les variables importantes sont définies dans `backend/.env` ou dans un fichier local non versionné :
 
 | Variable | Rôle | Exemple |
 | --- | --- | --- |
@@ -273,29 +272,55 @@ Content-Type: application/json
 X-API-KEY: <APP_API_KEY>
 ```
 
-Corps attendu : un tableau de modifications.
+Le backend attend un objet contenant la liste `updates` :
 
 ```json
-[
-	{
-		"taskId": 1,
-		"year": 2026,
-		"month": 9,
-		"status": "FAIT",
-		"observation": "Contrôle effectué sans anomalie.",
-		"updatedBy": "Grégory",
-		"timestamp": 1760000000000
-	}
-]
+{
+	"updates": [
+		{
+			"taskId": 1,
+			"year": 2026,
+			"month": 9,
+			"status": "FAIT",
+			"observation": "Contrôle effectué sans anomalie.",
+			"updatedBy": "Grégory",
+			"completedAt": "2026-09-21T10:30:00+00:00",
+			"photoBase64": null,
+			"timestamp": 1760000000000
+		}
+	]
+}
 ```
 
 Réponse `200` :
 
 ```json
-{"status":"success","syncedCount":1}
+{"success":true,"processed":1}
 ```
 
-Le backend crée ou met à jour un journal unique pour le couple tâche/année/mois. Les identifiants de tâches inexistants sont ignorés.
+Le backend crée ou met à jour un journal unique pour le couple tâche/année/mois. Les identifiants de tâches inexistants sont ignorés. Une image `data:image/...;base64,...` est enregistrée dans `backend/public/uploads/tasks/`.
+
+Le service frontend envoie actuellement la file sous forme de tableau JSON alors que le contrôleur backend lit le champ `updates`. Cette différence doit être harmonisée avant de dépendre de la synchronisation hors ligne en production.
+
+### Routes administrateur
+
+Les routes suivantes nécessitent la même clé API. La vérification du PIN est effectuée par `POST /api/admin/verify-pin`.
+
+| Méthode | Route | Rôle |
+| --- | --- | --- |
+| `POST` | `/api/admin/verify-pin` | Vérifier le PIN administrateur |
+| `POST` | `/api/admin/update-pin` | Modifier le PIN |
+| `GET` | `/api/admin/summary?year=2026` | Obtenir la synthèse annuelle |
+| `GET` | `/api/admin/annual-report?year=2026` | Obtenir les données du rapport annuel |
+| `GET` | `/api/admin/reserves` | Lister les réserves actives |
+| `POST` | `/api/admin/reserves/{id}/resolve` | Résoudre une réserve |
+| `POST` | `/api/admin/tasks` | Ajouter une tâche |
+| `PUT` | `/api/admin/tasks/{id}` | Modifier une tâche |
+| `DELETE` | `/api/admin/tasks/{id}` | Supprimer une tâche et son historique |
+| `POST` | `/api/admin/cleanup-photos` | Supprimer les photos orphelines |
+| `GET` | `/api/admin/backup-db` | Télécharger une sauvegarde de la base |
+
+L'authentification par PIN est conservée dans `sessionStorage` côté navigateur. Elle complète la clé API mais ne remplace pas une authentification serveur robuste pour un environnement exposé.
 
 ## Modèle de données
 
@@ -322,7 +347,9 @@ Un journal contient l'état d'une tâche pour un mois donné :
 - `status` ;
 - `observation` ;
 - `updatedBy` ;
-- `updatedAt`.
+- `updatedAt` ;
+- `completedAt` ;
+- `photoUrl` : chemin de la photo associée, le cas échéant.
 
 Une contrainte d'unicité empêche d'avoir plusieurs journaux pour la même tâche, la même année et le même mois.
 
@@ -334,12 +361,11 @@ Une tâche est due lorsque le mois sélectionné respecte son cycle :
 ((mois - startMonth) modulo intervalMonths) == 0
 ```
 
-Le backend applique un modulo positif afin que le calcul fonctionne également pour les mois précédant le mois de démarrage.
-
 Avec les fixtures actuelles :
 
 - une tâche mensuelle (`intervalMonths = 1`) est due tous les mois ;
-- une tâche trimestrielle (`intervalMonths = 3`) est due en janvier, avril, juillet et octobre lorsque `startMonth = 1`.
+- une tâche trimestrielle (`intervalMonths = 3`) est due en janvier, avril, juillet et octobre lorsque `startMonth = 1` ;
+- une tâche n'est pas due avant son `startMonth` dans l'année consultée.
 
 Pour ajouter une tâche, modifier `backend/src/DataFixtures/AppFixtures.php`, puis recharger les fixtures dans une base de développement.
 
@@ -463,7 +489,8 @@ php bin/console doctrine:fixtures:load --no-interaction
 | `frontend/src/syncService.js` | Appels API, lecture du cache, ajout et envoi de la file de synchronisation |
 | `frontend/src/db.js` | Schéma IndexedDB Dexie |
 | `frontend/vite.config.js` | Build Vite et configuration PWA |
-| `backend/src/Controller/ApiController.php` | Authentification API, lecture et synchronisation des tâches |
+| `backend/src/Controller/ApiController.php` | Authentification API, tâches, administration et synchronisation |
+| `backend/public/uploads/tasks/` | Photos associées aux journaux de maintenance |
 | `backend/src/Entity/` | Entités Doctrine |
 | `backend/src/DataFixtures/AppFixtures.php` | Catégories et tâches initiales |
 | `backend/config/packages/doctrine.yaml` | Connexion et mapping Doctrine |
