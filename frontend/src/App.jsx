@@ -14,6 +14,7 @@ import {
   FileSpreadsheet,
   Search,
   Filter,
+  Map,
 } from "lucide-react";
 import { compressImage } from "./imageUtils";
 import AdminDashboard from "./AdminDashboard";
@@ -26,6 +27,7 @@ import PhotoLightbox from "./components/PhotoLightbox";
 import PrintSignature from "./components/PrintSignature";
 import TaskHistoryModal from "./components/TaskHistoryModal";
 import UpdateBanner from "./components/UpdateBanner";
+import InteractivePlan from "./components/InteractivePlan";
 
 const API_BASE_URL = "https://vericelgregory.alwaysdata.net/piscine/api";
 
@@ -92,6 +94,7 @@ export default function App() {
   const [historyTask, setHistoryTask] = useState(null);
   const [historyData, setHistoryData] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [showPlan, setShowPlan] = useState(false);
 
   const {
     needRefresh: [needRefresh],
@@ -303,12 +306,12 @@ export default function App() {
       <div className="app-container">
         {/* EN-TÊTE */}
         <header className="app-header">
-          {needRefresh && <UpdateBanner onUpdate={() => updateServiceWorker(true)} />}
+          {needRefresh && (
+            <UpdateBanner onUpdate={() => updateServiceWorker(true)} />
+          )}
 
           <div>
-            <h1 className="app-title">
-              Piscine d'Ambérieu
-            </h1>
+            <h1 className="app-title">Piscine d'Ambérieu</h1>
             <p className="app-subtitle">
               Suivi de maintenance préventive — Utilisateur :{" "}
               <strong>{user}</strong>
@@ -317,6 +320,13 @@ export default function App() {
 
           <div className="header-actions no-print">
             <ConnectionStatus isOnline={isOnline} />
+            <button
+              onClick={() => setShowPlan(true)}
+              className="icon-button plan"
+              title="Ouvrir le Plan interactif Niveau 0"
+            >
+              <Map size={18} color="#d97706" />
+            </button>
             <button
               onClick={() => setShowSettings(!showSettings)}
               className="icon-button settings"
@@ -337,14 +347,10 @@ export default function App() {
         {/* PARAMÈTRES / SÉCURITÉ */}
         {showSettings && (
           <div className="settings-panel no-print">
-            <h3 className="settings-title">
-              Profil & Clé d'API
-            </h3>
+            <h3 className="settings-title">Profil & Clé d'API</h3>
             <div className="settings-fields">
               <div>
-                <label className="form-label">
-                  Nom / Prénom :
-                </label>
+                <label className="form-label">Nom / Prénom :</label>
                 <input
                   type="text"
                   value={user}
@@ -353,9 +359,7 @@ export default function App() {
                 />
               </div>
               <div>
-                <label className="form-label">
-                  Clé d'API (X-API-KEY) :
-                </label>
+                <label className="form-label">Clé d'API (X-API-KEY) :</label>
                 <input
                   type="password"
                   value={keyInput}
@@ -365,20 +369,14 @@ export default function App() {
                 />
               </div>
             </div>
-            <button
-              onClick={saveSettings}
-              className="primary-button"
-            >
+            <button onClick={saveSettings} className="primary-button">
               Enregistrer
             </button>
           </div>
         )}
 
         {authError && (
-          <div
-            className="no-print"
-            className="auth-error"
-          >
+          <div className="no-print auth-error">
             <strong>Erreur d'accès :</strong> Clé d'API incorrecte ou absente.
             Cliquez sur la roue crantée pour la configurer.
           </div>
@@ -438,19 +436,13 @@ export default function App() {
 
             <div className="dashboard-stats">
               <div className="completion-stat">
-                <span className="completion-rate">
-                  {completionRate}%
-                </span>
-                <span className="completion-label">
-                  Taux de réalisation
-                </span>
+                <span className="completion-rate">{completionRate}%</span>
+                <span className="completion-label">Taux de réalisation</span>
               </div>
               <div className="task-counts">
                 <div>
-                  <strong className="done-count">
-                    {doneTasks.length}
-                  </strong>{" "}
-                  / {dueTasks.length} faites
+                  <strong className="done-count">{doneTasks.length}</strong> /{" "}
+                  {dueTasks.length} faites
                 </div>
                 {warningTasks.length > 0 && (
                   <div className="reserve-count">
@@ -465,11 +457,7 @@ export default function App() {
         {/* BARRE DE RECHERCHE ET FILTRES RAPIDES */}
         <div className="task-filters no-print">
           <div className="search-box">
-            <Search
-              size={17}
-              color="#94a3b8"
-              className="search-icon"
-            />
+            <Search size={17} color="#94a3b8" className="search-icon" />
             <input
               type="text"
               value={searchQuery}
@@ -530,6 +518,15 @@ export default function App() {
           formatDate={formatCompletedAt}
         />
 
+        {/* PLAN INTERACTIF */}
+        {showPlan && (
+          <InteractivePlan
+            tasks={tasks}
+            onStatusChange={handleStatusChange}
+            onClose={() => setShowPlan(false)}
+          />
+        )}
+
         {/* ESPACE ADMIN */}
         {showAdmin && (
           <AdminDashboard
@@ -541,7 +538,10 @@ export default function App() {
           />
         )}
 
-        <PhotoLightbox image={previewImage} onClose={() => setPreviewImage(null)} />
+        <PhotoLightbox
+          image={previewImage}
+          onClose={() => setPreviewImage(null)}
+        />
       </div>
     </div>
   );
