@@ -5,6 +5,7 @@ import {
   Circle,
   History,
   MessageSquare,
+  Map,
 } from "lucide-react";
 
 const PHOTO_BASE_URL = "https://vericelgregory.alwaysdata.net/piscine";
@@ -18,6 +19,7 @@ export default function TaskItem({
   onPhotoChange,
   onSaveNote,
   onOpenHistory,
+  onOpenPlan,
   onPreviewImage,
   formatCompletedAt,
 }) {
@@ -27,20 +29,79 @@ export default function TaskItem({
   const photo = photos[task.id] || task.photoUrl;
   const photoUrl = photos[task.id] || `${PHOTO_BASE_URL}${task.photoUrl}`;
 
+  // Détection automatique du calque approprié selon l'intitulé ou la catégorie
+  const titleLower = (task.title || "").toLowerCase();
+  const catLower = (task.category || "").toLowerCase();
+
+  const isMappable =
+    catLower.includes("incendie") ||
+    catLower.includes("sécurité") ||
+    catLower.includes("electricite") ||
+    catLower.includes("éclairage") ||
+    titleLower.includes("extincteur") ||
+    titleLower.includes("baes") ||
+    titleLower.includes("désenfumage") ||
+    titleLower.includes("desenfumage") ||
+    titleLower.includes("gaz") ||
+    titleLower.includes("coupure") ||
+    titleLower.includes("tgbt");
+
+  const handleOpenPlanForTask = (e) => {
+    e.stopPropagation();
+    if (!onOpenPlan) return;
+
+    let targetLayer = "all";
+    if (titleLower.includes("extincteur")) {
+      targetLayer = "extincteur";
+    } else if (titleLower.includes("baes") || titleLower.includes("secours")) {
+      targetLayer = "baes";
+    } else if (titleLower.includes("désenfumage") || titleLower.includes("desenfumage")) {
+      targetLayer = "desenfumage";
+    } else if (
+      titleLower.includes("coupure") ||
+      titleLower.includes("gaz") ||
+      titleLower.includes("armoire") ||
+      titleLower.includes("tgbt")
+    ) {
+      targetLayer = "coupure";
+    }
+
+    onOpenPlan(targetLayer);
+  };
+
   return (
     <div className={`task-row ${isDue ? "" : "is-not-due"}`}>
       <div className="task-main">
         <div className="task-details">
           <div className="task-heading">
             <span className="task-title">{task.title}</span>
-            <button
-              onClick={() => onOpenHistory(task)}
-              className="history-trigger no-print"
-              title="Consulter l'historique de cette tâche"
-            >
-              <History size={14} />
-            </button>
+
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+              {/* Bouton vers le Plan interactif pré-filtré */}
+              {isMappable && onOpenPlan && (
+                <button
+                  type="button"
+                  onClick={handleOpenPlanForTask}
+                  className="history-trigger no-print"
+                  style={{ color: "#d97706" }}
+                  title="Localiser cet équipement sur le plan"
+                >
+                  <Map size={14} />
+                </button>
+              )}
+
+              {/* Bouton d'historique */}
+              <button
+                type="button"
+                onClick={() => onOpenHistory(task)}
+                className="history-trigger no-print"
+                title="Consulter l'historique de cette tâche"
+              >
+                <History size={14} />
+              </button>
+            </div>
           </div>
+
           <div className="task-meta">
             <span>{task.frequency}</span>
             {!isDue && <span className="not-due-label">• Non dû ce mois</span>}
@@ -57,13 +118,25 @@ export default function TaskItem({
 
         {isDue ? (
           <div className="task-actions no-print">
-            <button onClick={() => onStatusChange(task.id, "FAIT")} className={`status-button ${task.status === "FAIT" ? "is-done" : ""}`} title="Fait">
+            <button
+              onClick={() => onStatusChange(task.id, "FAIT")}
+              className={`status-button ${task.status === "FAIT" ? "is-done" : ""}`}
+              title="Fait"
+            >
               <CheckCircle2 size={18} />
             </button>
-            <button onClick={() => onStatusChange(task.id, "RESERVE")} className={`status-button ${isWarning ? "is-reserved" : ""}`} title="Réserve / Attention">
+            <button
+              onClick={() => onStatusChange(task.id, "RESERVE")}
+              className={`status-button ${isWarning ? "is-reserved" : ""}`}
+              title="Réserve / Attention"
+            >
               <AlertTriangle size={18} />
             </button>
-            <button onClick={() => onStatusChange(task.id, "A_FAIRE")} className={`status-button ${task.status === "A_FAIRE" ? "is-todo" : ""}`} title="À faire">
+            <button
+              onClick={() => onStatusChange(task.id, "A_FAIRE")}
+              className={`status-button ${task.status === "A_FAIRE" ? "is-todo" : ""}`}
+              title="À faire"
+            >
               <Circle size={18} />
             </button>
           </div>
@@ -114,7 +187,9 @@ export default function TaskItem({
 
       {isDue && !isWarning && hasNote && (
         <div className="existing-note">
-          <div><strong>Note précédente :</strong> {task.observation}</div>
+          <div>
+            <strong>Note précédente :</strong> {task.observation}
+          </div>
           {task.photoUrl && (
             <img
               src={`${PHOTO_BASE_URL}${task.photoUrl}`}
