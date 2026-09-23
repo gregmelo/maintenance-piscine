@@ -589,4 +589,74 @@ class ApiController extends AbstractController
 
         return $this->file($dbPath, $fileName, \Symfony\Component\HttpFoundation\ResponseHeaderBag::DISPOSITION_ATTACHMENT);
     }
+
+    #[Route('/plan-pins', name: 'plan_pins_get', methods: ['GET'])]
+    public function getPlanPins(Request $request, EntityManagerInterface $em): JsonResponse
+    {
+        if (!$this->isAuthorized($request)) {
+            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $conn = $em->getConnection();
+        $conn->executeStatement("
+            CREATE TABLE IF NOT EXISTS plan_pins (
+                id VARCHAR(50) PRIMARY KEY,
+                type VARCHAR(50) NOT NULL,
+                title VARCHAR(255) NOT NULL,
+                x FLOAT NOT NULL,
+                y FLOAT NOT NULL
+            )
+        ");
+
+        $pins = $conn->fetchAllAssociative("SELECT * FROM plan_pins");
+        
+        // Si la table est encore vide, on injecte les points de départ par défaut
+        if (empty($pins)) {
+            $defaults = [
+                ['ext_1', 'extincteur', 'Extincteur n°1 — Hall Accueil', 63.5, 36.8],
+                ['ext_2', 'extincteur', 'Extincteur n°2 — Dégagement Vestiaires', 54.2, 45.1],
+                ['ext_3', 'extincteur', 'Extincteur n°3 — Local Chaufferie', 82.5, 81.2],
+                ['baes_1', 'baes', 'BAES Sortie Principale Hall', 61.2, 32.1],
+                ['des_1', 'desenfumage', 'Désenfumage — Circulation Vestiaires', 69.8, 33.5],
+                ['coup_1', 'coupure', 'Coupure Gaz Chaufferie', 82.0, 85.0],
+            ];
+            foreach ($defaults as $d) {
+                $conn->executeStatement(
+                    "INSERT INTO plan_pins (id, type, title, x, y) VALUES (?, ?, ?, ?, ?)",
+                    $d
+                );
+            }
+            $pins = $conn->fetchAllAssociative("SELECT * FROM plan_pins");
+        }
+
+        return $this->json($pins);
+    }
+
+    #[Route('/plan-pins', name: 'plan_pins_save', methods: ['POST'])]
+    public function savePlanPins(Request $request, EntityManagerInterface $em): JsonResponse
+    {
+        if (!$this->isAuthorized($request)) {
+            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $pins = json_decode($request->getContent(), true) ?? [];
+        $conn = $em->getConnection();
+
+        $conn->executeStatement("DELETE FROM plan_pins");
+
+        foreach ($pins as $p) {
+            $conn->executeStatement(
+                "INSERT INTO plan_pins (id, type, title, x, y) VALUES (:id, :type, :title, :x, :y)",
+                [
+                    'id' => $p['id'],
+                    'type' => $p['type'],
+                    'title' => $p['title'],
+                    'x' => (float)$p['x'],
+                    'y' => (float)$p['y'],
+                ]
+            );
+        }
+
+        return $this->json(['success' => true, 'count' => count($pins)]);
+    }
 }
