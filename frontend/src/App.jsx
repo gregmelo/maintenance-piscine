@@ -31,7 +31,6 @@ import InteractivePlan from "./components/InteractivePlan";
 
 const API_BASE_URL = "https://vericelgregory.alwaysdata.net/piscine/api";
 
-// Les libelles sont partages par le selecteur de mois et les exports.
 const MONTH_NAMES = [
   "Janvier",
   "Février",
@@ -94,7 +93,9 @@ export default function App() {
   const [historyTask, setHistoryTask] = useState(null);
   const [historyData, setHistoryData] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [showPlan, setShowPlan] = useState(false);
+
+  // Calque du plan : null = fermé, sinon "extincteur", "baes", "all", etc.
+  const [planLayer, setPlanLayer] = useState(null);
 
   const {
     needRefresh: [needRefresh],
@@ -111,7 +112,6 @@ export default function App() {
   useEffect(() => {
     let isMounted = true;
 
-    // Le service choisit automatiquement l'API ou le cache IndexedDB.
     async function loadData() {
       const {
         data,
@@ -144,7 +144,6 @@ export default function App() {
   }, [selectedYear, selectedMonth]);
 
   useEffect(() => {
-    // Une reconnexion relance la file locale des modifications en attente.
     const handleStatus = () => {
       const online = navigator.onLine;
       setIsOnline(online);
@@ -167,7 +166,6 @@ export default function App() {
   };
 
   const handleStatusChange = async (taskId, newStatus) => {
-    // Le statut, la note et la photo sont envoyes ensemble pour conserver un journal coherent.
     const currentNote = notes[taskId] || "";
     const currentPhoto = photos[taskId] || null;
     const isDoneOrReserve = newStatus === "FAIT" || newStatus === "RESERVE";
@@ -247,7 +245,6 @@ export default function App() {
   };
 
   const openTaskHistory = async (task) => {
-    // L'historique est charge a l'ouverture afin de ne pas alourdir la liste principale.
     setHistoryTask(task);
     setLoadingHistory(true);
     try {
@@ -265,7 +262,6 @@ export default function App() {
     }
   };
 
-  // Filtrage combine : recherche textuelle et affichage optionnel des taches restantes.
   const filteredTasks = tasks.filter((task) => {
     const matchesSearch =
       task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -285,7 +281,6 @@ export default function App() {
   }, {});
 
   Object.keys(groupedTasks).forEach((cat) => {
-    // Les controles a faire restent visibles avant ceux deja traites.
     groupedTasks[cat].sort((a, b) => {
       if (a.isDue && !b.isDue) return -1;
       if (!a.isDue && b.isDue) return 1;
@@ -321,7 +316,7 @@ export default function App() {
           <div className="header-actions no-print">
             <ConnectionStatus isOnline={isOnline} />
             <button
-              onClick={() => setShowPlan(true)}
+              onClick={() => setPlanLayer("extincteur")}
               className="icon-button plan"
               title="Ouvrir le Plan interactif Niveau 0"
             >
@@ -413,7 +408,7 @@ export default function App() {
                     )
                   }
                   className="export-button"
-                  title="Exporter le registre en fichier Excel / Excel"
+                  title="Exporter le registre en fichier Excel (.xlsx)"
                 >
                   <FileSpreadsheet size={16} /> Exporter Excel
                 </button>
@@ -498,12 +493,13 @@ export default function App() {
             onPhotoChange: handlePhotoChange,
             onSaveNote: handleSaveNote,
             onOpenHistory: openTaskHistory,
+            onOpenPlan: (layer) => setPlanLayer(layer || "all"),
             onPreviewImage: setPreviewImage,
             formatCompletedAt,
           }}
         />
 
-        {/* CARTOUCHE D'ÉMARGEMENT POUR L'IMPRESSION RÉGLEMENTAIRE */}
+        {/* CARTOUCHE D'ÉMARGEMENT */}
         <PrintSignature
           month={MONTH_NAMES[selectedMonth - 1]}
           year={selectedYear}
@@ -518,12 +514,13 @@ export default function App() {
           formatDate={formatCompletedAt}
         />
 
-        {/* PLAN INTERACTIF */}
-        {showPlan && (
+        {/* PLAN INTERACTIF AVEC GESTION DU CALQUE */}
+        {planLayer && (
           <InteractivePlan
             tasks={tasks}
+            initialLayer={planLayer}
             onStatusChange={handleStatusChange}
-            onClose={() => setShowPlan(false)}
+            onClose={() => setPlanLayer(null)}
           />
         )}
 

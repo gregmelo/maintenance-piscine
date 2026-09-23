@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   CheckCircle2,
   AlertTriangle,
@@ -6,232 +6,286 @@ import {
   Flame,
   Wind,
   Zap,
-  Info,
+  Lightbulb,
+  DoorOpen,
+  Plus,
+  Trash2,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  Circle,
 } from "lucide-react";
+import { getApiKey } from "../syncService";
 
-// Points initiaux repérés sur le plan Niveau 0 (coordonnées en %)
+const API_BASE_URL = "https://vericelgregory.alwaysdata.net/piscine/api";
+
+// Constante locale au composant (sans export pour satisfaire React Fast Refresh)
+const PIN_TYPES = {
+  extincteur: { label: "Extincteur", icon: Flame, color: "#ef4444" },
+  baes: { label: "BAES / Éclairage de secours", icon: Lightbulb, color: "#10b981" },
+  desenfumage: { label: "Commande Désenfumage", icon: Wind, color: "#3b82f6" },
+  coupure: { label: "Arrêt d'urgence / Coupure", icon: Zap, color: "#f59e0b" },
+  issue: { label: "Issue de secours", icon: DoorOpen, color: "#8b5cf6" },
+};
+
 const DEFAULT_PINS = [
-  {
-    id: "pin_ext_hall",
-    taskId: null, // Sera lié dynamiquement ou restera repéré
-    title: "Extincteur — Hall Accueil",
-    type: "extincteur",
-    x: 63.5,
-    y: 36.8,
-  },
-  {
-    id: "pin_ext_vestiaires",
-    taskId: null,
-    title: "Extincteur — Dégagement Vestiaires",
-    type: "extincteur",
-    x: 54.2,
-    y: 45.1,
-  },
-  {
-    id: "pin_ext_chaufferie",
-    taskId: null,
-    title: "Extincteur — Local Chaufferie",
-    type: "extincteur",
-    x: 82.5,
-    y: 81.2,
-  },
-  {
-    id: "pin_desenf_circul",
-    taskId: null,
-    title: "Commande Désenfumage — Circulation",
-    type: "desenfumage",
-    x: 69.8,
-    y: 33.5,
-  },
-  {
-    id: "pin_coupure_gaz",
-    taskId: null,
-    title: "Arrêt d'urgence / Coupure Gaz",
-    type: "gaz",
-    x: 62.1,
-    y: 28.5,
-  },
+  { id: "ext_1", type: "extincteur", title: "Extincteur n°1 — Hall Accueil", x: 63.5, y: 36.8 },
+  { id: "ext_2", type: "extincteur", title: "Extincteur n°2 — Dégagement Vestiaires", x: 54.2, y: 45.1 },
+  { id: "ext_3", type: "extincteur", title: "Extincteur n°3 — Local Chaufferie", x: 82.5, y: 81.2 },
+  { id: "baes_1", type: "baes", title: "BAES Sortie Principale Hall", x: 61.2, y: 32.1 },
+  { id: "des_1", type: "desenfumage", title: "Désenfumage — Circulation Vestiaires", x: 69.8, y: 33.5 },
+  { id: "coup_1", type: "coupure", title: "Coupure Gaz Chaufferie", x: 82.0, y: 85.0 },
 ];
 
 export default function InteractivePlan({
   tasks = [],
+  initialLayer = "extincteur",
   onStatusChange,
   onClose,
 }) {
-  const [pins, setPins] = useState(DEFAULT_PINS);
-  const [selectedPin, setSelectedPin] = useState(null);
-  const [calibrationMode, setCalibrationMode] = useState(false);
+  const [activeLayer, setActiveLayer] = useState(initialLayer);
+  const [pins, setPins] = useState(() => {
+    const cached = localStorage.getItem("pool_plan_pins");
+    return cached ? JSON.parse(cached) : DEFAULT_PINS;
+  });
 
-  // Clic sur l'image pour le mode étalonnage
+  const [selectedPin, setSelectedPin] = useState(null);
+  const [isAdding, setIsAdding] = useState(false);
+  const [newPinType, setNewPinType] = useState(initialLayer === "all" ? "extincteur" : initialLayer);
+  const [zoom, setZoom] = useState(1);
+
+  const containerRef = useRef(null);
+  const apiKey = getApiKey();
+
+  // Chargement des pastilles depuis Alwaysdata
+  useEffect(() => {
+    let isMounted = true;
+
+    async function fetchPins() {
+      try {
+        const res = await fetch(`${API_BASE_URL}/plan-pins`, {
+          headers: { "X-API-KEY": apiKey },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted && Array.isArray(data) && data.length > 0) {
+            setPins(data);
+            localStorage.setItem("pool_plan_pins", JSON.stringify(data));
+          }
+        }
+      } catch {
+        // Mode hors-ligne : conserve les pastilles en cache local
+      }
+    }
+
+    fetchPins();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [apiKey]);
+
+  // Synchronisation des pastilles vers le serveur
+  const persistPins = async (updatedPins) => {
+    setPins(updatedPins);
+    localStorage.setItem("pool_plan_pins", JSON.stringify(updatedPins));
+
+    try {
+      await fetch(`${API_BASE_URL}/plan-pins`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-KEY": apiKey,
+        },
+        body: JSON.stringify(updatedPins),
+      });
+    } catch (e) {
+      console.warn("Synchronisation réseau différée pour les pastilles :", e);
+    }
+  };
+
+  const handleSelectLayer = (layer) => {
+    setActiveLayer(layer);
+    if (layer !== "all") {
+      setNewPinType(layer);
+    }
+  };
+
   const handleImageClick = (e) => {
-    if (!calibrationMode) return;
+    if (!isAdding) return;
 
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = (((e.clientX - rect.left) / rect.width) * 100).toFixed(1);
-    const y = (((e.clientY - rect.top) / rect.height) * 100).toFixed(1);
+    const x = parseFloat((((e.clientX - rect.left) / rect.width) * 100).toFixed(1));
+    const y = parseFloat((((e.clientY - rect.top) / rect.height) * 100).toFixed(1));
 
-    const title = prompt("Titre de ce nouveau point de contrôle :", "Extincteur n°...");
-    if (!title) return;
+    const defaultTitle = `${PIN_TYPES[newPinType]?.label || "Point"} n°${
+      pins.filter((p) => p.type === newPinType).length + 1
+    }`;
+    const title = prompt("Intitulé de l'organe de sécurité :", defaultTitle);
+    if (!title || !title.trim()) return;
 
     const newPin = {
       id: "pin_" + Date.now(),
-      taskId: null,
+      type: newPinType,
       title: title.trim(),
-      type: "extincteur",
-      x: parseFloat(x),
-      y: parseFloat(y),
+      x,
+      y,
     };
 
-    setPins((prev) => [...prev, newPin]);
-    console.log("Nouveau Pin généré :", newPin);
+    persistPins([...pins, newPin]);
+    setIsAdding(false);
   };
 
-  const getPinColor = (pin) => {
-    // Si lié à une tâche existante
-    const task = tasks.find((t) => t.id === pin.taskId || t.title.toLowerCase().includes(pin.title.toLowerCase()));
-    if (!task) return "#3b82f6"; // Bleu par défaut
-    if (task.status === "FAIT") return "#22c55e"; // Vert
-    if (task.status === "RESERVE") return "#f59e0b"; // Orange
-    return "#ef4444"; // Rouge à faire
+  const handleDeletePin = (pinId) => {
+    if (!window.confirm("Supprimer cette pastille du plan pour tous les agents ?")) return;
+    persistPins(pins.filter((p) => p.id !== pinId));
+    setSelectedPin(null);
   };
 
-  const getPinIcon = (type) => {
-    switch (type) {
-      case "extincteur":
-        return <Flame size={12} color="#ffffff" />;
-      case "desenfumage":
-        return <Wind size={12} color="#ffffff" />;
-      case "gaz":
-        return <Zap size={12} color="#ffffff" />;
-      default:
-        return <Info size={12} color="#ffffff" />;
-    }
+  const visiblePins = activeLayer === "all" ? pins : pins.filter((p) => p.type === activeLayer);
+
+  const getPinStatus = (pin) => {
+    const task = tasks.find(
+      (t) =>
+        t.title.toLowerCase().includes(pin.title.toLowerCase()) ||
+        pin.title.toLowerCase().includes(t.title.toLowerCase())
+    );
+
+    if (!task) return { status: "A_FAIRE", color: PIN_TYPES[pin.type]?.color || "#ef4444", task: null };
+    if (task.status === "FAIT") return { status: "FAIT", color: "#22c55e", task };
+    if (task.status === "RESERVE") return { status: "RESERVE", color: "#f59e0b", task };
+    return { status: "A_FAIRE", color: "#ef4444", task };
   };
 
   return (
     <div
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        width: "100vw",
-        height: "100vh",
-        backgroundColor: "rgba(15, 23, 42, 0.75)",
-        backdropFilter: "blur(4px)",
-        display: "flex",
-        flexDirection: "column",
-        zIndex: 9999,
-        padding: "12px",
-        boxSizing: "border-box",
-      }}
+      className="interactive-plan-overlay"
     >
       <div
-        style={{
-          backgroundColor: "#ffffff",
-          borderRadius: "14px",
-          width: "100%",
-          maxWidth: "1050px",
-          margin: "0 auto",
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-          boxShadow: "0 20px 25px -5px rgba(0,0,0,0.2)",
-        }}
+        className="interactive-plan-modal"
       >
-        {/* EN-TÊTE DU PLAN */}
-        <div
-          style={{
-            padding: "12px 18px",
-            borderBottom: "1px solid #e2e8f0",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: "10px",
-            backgroundColor: "#f8fafc",
-          }}
-        >
+        {/* EN-TÊTE */}
+        <div className="interactive-plan-header">
           <div>
-            <h3 style={{ margin: 0, fontSize: "1.1rem", color: "#0f172a" }}>
-              Plan d'évacuation & Organes de sécurité — Niveau 0
+            <h3 className="interactive-plan-title">
+              Plan de sécurité interactif — Niveau 0
             </h3>
-            <span style={{ fontSize: "0.78rem", color: "#64748b" }}>
-              Cliquez ou touchez une pastille pour valider le contrôle
+            <span className="interactive-plan-count">
+              {visiblePins.length} point(s) affiché(s) sur ce calque
             </span>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <button
-              onClick={() => setCalibrationMode(!calibrationMode)}
-              style={{
-                backgroundColor: calibrationMode ? "#fee2e2" : "#f1f5f9",
-                color: calibrationMode ? "#b91c1c" : "#475569",
-                border: "1px solid #cbd5e1",
-                borderRadius: "6px",
-                padding: "6px 12px",
-                fontSize: "0.78rem",
-                fontWeight: "600",
-                cursor: "pointer",
-              }}
-            >
-              {calibrationMode ? "Mode Placement ACTIF" : "Placer un point"}
-            </button>
+          <div className="interactive-plan-header-actions">
+            <div className="interactive-plan-zoom-controls">
+              <button
+                onClick={() => setZoom((z) => Math.min(2.5, z + 0.25))}
+                className="interactive-plan-zoom-button"
+                title="Zoomer"
+              >
+                <ZoomIn size={16} />
+              </button>
+              <button
+                onClick={() => setZoom((z) => Math.max(1, z - 0.25))}
+                className="interactive-plan-zoom-button"
+                title="Dézoomer"
+              >
+                <ZoomOut size={16} />
+              </button>
+              <button
+                onClick={() => setZoom(1)}
+                className="interactive-plan-zoom-button"
+                title="Réinitialiser le zoom"
+              >
+                <RotateCcw size={16} />
+              </button>
+            </div>
 
             <button
               onClick={onClose}
-              style={{
-                background: "none",
-                border: "none",
-                color: "#64748b",
-                cursor: "pointer",
-                padding: "4px",
-              }}
+              className="interactive-plan-close-button"
             >
               <X size={22} />
             </button>
           </div>
         </div>
 
-        {/* CONTENEUR DU PLAN AVEC PASTILLES INTERACTIVES */}
+        {/* ONGLETS DES CALQUES */}
+        <div className="interactive-plan-layer-tabs">
+          <span className="interactive-plan-layer-label">
+            Calque :
+          </span>
+
+          <button
+            onClick={() => handleSelectLayer("extincteur")}
+            className={`interactive-plan-layer-tab ${activeLayer === "extincteur" ? "is-active" : ""}`}
+            style={{ "--layer-color": "#ef4444" }}
+          >
+            <Flame size={15} /> Extincteurs ({pins.filter((p) => p.type === "extincteur").length})
+          </button>
+
+          <button
+            onClick={() => handleSelectLayer("baes")}
+            className={`interactive-plan-layer-tab ${activeLayer === "baes" ? "is-active" : ""}`}
+            style={{ "--layer-color": "#10b981" }}
+          >
+            <Lightbulb size={15} /> BAES / Éclairage ({pins.filter((p) => p.type === "baes").length})
+          </button>
+
+          <button
+            onClick={() => handleSelectLayer("desenfumage")}
+            className={`interactive-plan-layer-tab ${activeLayer === "desenfumage" ? "is-active" : ""}`}
+            style={{ "--layer-color": "#3b82f6" }}
+          >
+            <Wind size={15} /> Désenfumage ({pins.filter((p) => p.type === "desenfumage").length})
+          </button>
+
+          <button
+            onClick={() => handleSelectLayer("coupure")}
+            className={`interactive-plan-layer-tab ${activeLayer === "coupure" ? "is-active" : ""}`}
+            style={{ "--layer-color": "#f59e0b" }}
+          >
+            <Zap size={15} /> Coupures Élec / Gaz ({pins.filter((p) => p.type === "coupure").length})
+          </button>
+
+          <button
+            onClick={() => handleSelectLayer("all")}
+            className={`interactive-plan-layer-tab ${activeLayer === "all" ? "is-active" : ""}`}
+            style={{ "--layer-color": "#475569" }}
+          >
+            Tout afficher ({pins.length})
+          </button>
+
+          <div className="interactive-plan-add-wrapper">
+            <button
+              onClick={() => setIsAdding(!isAdding)}
+              className={`interactive-plan-add-button ${isAdding ? "is-adding" : ""}`}
+            >
+              <Plus size={15} />
+              {isAdding ? "Annuler placement" : `Ajouter un ${PIN_TYPES[newPinType]?.label || "point"}`}
+            </button>
+          </div>
+        </div>
+
+        {/* AFFICHAGE DU PLAN */}
         <div
-          style={{
-            flex: 1,
-            position: "relative",
-            overflow: "auto",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            backgroundColor: "#0f172a",
-            padding: "10px",
-          }}
+          ref={containerRef}
+          className="interactive-plan-viewport"
         >
           <div
             onClick={handleImageClick}
-            style={{
-              position: "relative",
-              maxWidth: "100%",
-              maxHeight: "100%",
-              display: "inline-block",
-              userSelect: "none",
-              cursor: calibrationMode ? "crosshair" : "default",
-            }}
+            className="interactive-plan-canvas"
+            style={{ transform: `scale(${zoom})`, cursor: isAdding ? "crosshair" : "default" }}
           >
             <img
               src="./plans/plan_niveau_0.png"
-              alt="Plan de sécurité Niveau 0"
-              style={{
-                maxWidth: "100%",
-                maxHeight: "75vh",
-                objectFit: "contain",
-                display: "block",
-                borderRadius: "8px",
-              }}
+              alt="Plan Niveau 0"
+              className="interactive-plan-image"
             />
 
-            {/* AFFICHAGE DES PASTILLES */}
-            {pins.map((pin) => {
-              const color = getPinColor(pin);
+            {visiblePins.map((pin) => {
+              const { color } = getPinStatus(pin);
+              const PinIcon = PIN_TYPES[pin.type]?.icon || Circle;
+
               return (
                 <div
                   key={pin.id}
@@ -239,116 +293,77 @@ export default function InteractivePlan({
                     e.stopPropagation();
                     setSelectedPin(pin);
                   }}
+                  className="interactive-plan-pin"
                   style={{
-                    position: "absolute",
                     left: `${pin.x}%`,
                     top: `${pin.y}%`,
-                    transform: "translate(-50%, -50%)",
                     backgroundColor: color,
-                    border: "2px solid #ffffff",
-                    borderRadius: "50%",
-                    width: "24px",
-                    height: "24px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    boxShadow: "0 2px 5px rgba(0,0,0,0.4)",
-                    cursor: "pointer",
-                    transition: "transform 0.15s ease",
-                    zIndex: 10,
+                    zIndex: selectedPin?.id === pin.id ? 30 : 10,
                   }}
                   title={pin.title}
-                  onMouseEnter={(e) => (e.currentTarget.style.transform = "translate(-50%, -50%) scale(1.25)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.transform = "translate(-50%, -50%) scale(1)")}
                 >
-                  {getPinIcon(pin.type)}
+                  <PinIcon size={13} color="#ffffff" />
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* FICHE D'ACTION DU POINT SÉLECTIONNÉ */}
+        {/* TIROIR D'ACTION */}
         {selectedPin && (
-          <div
-            style={{
-              padding: "14px 18px",
-              borderTop: "1px solid #e2e8f0",
-              backgroundColor: "#ffffff",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: "12px",
-            }}
-          >
-            <div>
-              <div style={{ fontSize: "0.95rem", fontWeight: "bold", color: "#1e293b" }}>
-                {selectedPin.title}
+          <div className="interactive-plan-action-drawer">
+            <div className="interactive-plan-selected-info">
+              <div className="interactive-plan-selected-meta">
+                <span className="interactive-plan-selected-type">
+                  {PIN_TYPES[selectedPin.type]?.label}
+                </span>
+                <span className="interactive-plan-selected-coordinates">
+                  X: {selectedPin.x}% / Y: {selectedPin.y}%
+                </span>
               </div>
-              <div style={{ fontSize: "0.78rem", color: "#64748b" }}>
-                Position : X {selectedPin.x}% / Y {selectedPin.y}%
+              <div className="interactive-plan-selected-title">
+                {selectedPin.title}
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <div className="interactive-plan-action-buttons">
               <button
                 onClick={() => {
-                  const task = tasks.find((t) => t.title.toLowerCase().includes(selectedPin.title.toLowerCase()));
-                  if (task && onStatusChange) onStatusChange(task.id, "FAIT");
+                  const { task } = getPinStatus(selectedPin);
+                  if (task && onStatusChange) {
+                    onStatusChange(task.id, "FAIT");
+                  }
                   setSelectedPin(null);
                 }}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  backgroundColor: "#22c55e",
-                  color: "#ffffff",
-                  border: "none",
-                  borderRadius: "6px",
-                  padding: "8px 14px",
-                  fontWeight: "bold",
-                  fontSize: "0.85rem",
-                  cursor: "pointer",
-                }}
+                className="interactive-plan-status-button is-done"
               >
-                <CheckCircle2 size={16} /> Fait
+                <CheckCircle2 size={16} /> Conforme (Fait)
               </button>
 
               <button
                 onClick={() => {
-                  const task = tasks.find((t) => t.title.toLowerCase().includes(selectedPin.title.toLowerCase()));
-                  if (task && onStatusChange) onStatusChange(task.id, "RESERVE");
+                  const { task } = getPinStatus(selectedPin);
+                  if (task && onStatusChange) {
+                    onStatusChange(task.id, "RESERVE");
+                  }
                   setSelectedPin(null);
                 }}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  backgroundColor: "#f59e0b",
-                  color: "#ffffff",
-                  border: "none",
-                  borderRadius: "6px",
-                  padding: "8px 14px",
-                  fontWeight: "bold",
-                  fontSize: "0.85rem",
-                  cursor: "pointer",
-                }}
+                className="interactive-plan-status-button is-reserved"
               >
                 <AlertTriangle size={16} /> Réserve
               </button>
 
               <button
+                onClick={() => handleDeletePin(selectedPin.id)}
+                className="interactive-plan-delete-button"
+                title="Supprimer cette pastille"
+              >
+                <Trash2 size={16} />
+              </button>
+
+              <button
                 onClick={() => setSelectedPin(null)}
-                style={{
-                  backgroundColor: "#f1f5f9",
-                  color: "#64748b",
-                  border: "none",
-                  borderRadius: "6px",
-                  padding: "8px 12px",
-                  fontSize: "0.85rem",
-                  cursor: "pointer",
-                }}
+                className="interactive-plan-dismiss-button"
               >
                 Fermer
               </button>
@@ -359,3 +374,4 @@ export default function InteractivePlan({
     </div>
   );
 }
+
