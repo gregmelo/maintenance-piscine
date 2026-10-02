@@ -17,9 +17,7 @@ class ApiController extends AbstractController
 {
     use ApiControllerSupportTrait;
 
-    public function __construct(private readonly TaskScheduleService $taskSchedule)
-    {
-    }
+    public function __construct(private readonly TaskScheduleService $taskSchedule) {}
 
     #[Route('/tasks', name: 'tasks_list', methods: ['GET'])]
     public function getTasks(Request $request, EntityManagerInterface $em): JsonResponse
@@ -609,7 +607,7 @@ class ApiController extends AbstractController
         ");
 
         $pins = $conn->fetchAllAssociative("SELECT * FROM plan_pins");
-        
+
         // Si la table est encore vide, on injecte les points de départ par défaut
         if (empty($pins)) {
             $defaults = [
@@ -658,5 +656,99 @@ class ApiController extends AbstractController
         }
 
         return $this->json(['success' => true, 'count' => count($pins)]);
+    }
+
+    #[Route('/api/plan-pin-states/{year}/{month}', name: 'api_plan_pin_states_get', methods: ['GET'])]
+    public function getPinStates(int $year, int $month, Request $request, EntityManagerInterface $em): JsonResponse
+    {
+        $apiKey = $request->headers->get('X-API-KEY');
+        if ($apiKey !== $this->getParameter('app.api_key')) {
+            return new JsonResponse(['error' => 'Accès non autorisé'], 401);
+        }
+
+        $conn = $em->getConnection();
+        // Création automatique de la table si nécessaire
+        $conn->executeStatement("
+        CREATE TABLE IF NOT EXISTS plan_pin_states (
+            pin_id VARCHAR(64) NOT NULL,
+            year INT NOT NULL,
+            month INT NOT NULL,
+            status VARCHAR(20) NOT NULL,
+            note TEXT,
+            updated_by VARCHAR(100),
+            completed_at VARCHAR(40),
+            PRIMARY KEY (pin_id, year, month)
+        )
+    ");
+
+        $rows = $conn->fetchAllAssociative(
+            "SELECT pin_id, status, note, updated_by as updatedBy, completed_at as completedAt 
+         FROM plan_pin_states 
+         WHERE year = ? AND month = ?",
+            [$year, $month]
+        );
+
+        $states = [];
+        foreach ($rows as $row) {
+            $states[$row['pin_id']] = [
+                'status' => $row['status'],
+                'note' => $row['note'] ?? '',
+                'updatedBy' => $row['updatedBy'] ?? '',
+                'completedAt' => $row['completedAt'] ?? ''
+            ];
+        }
+
+        return new JsonResponse($states);
+    }
+
+    #[Route('/api/plan-pin-states/{year}/{month}', name: 'api_plan_pin_states_save', methods: ['POST'])]
+    public function savePinStates(int $year, int $month, Request $request, EntityManagerInterface $em): JsonResponse
+    {
+        $apiKey = $request->headers->get('X-API-KEY');
+        if ($apiKey !== $this->getParameter('app.api_key')) {
+            return new JsonResponse(['error' => 'Accès non autorisé'], 401);
+        }
+
+        $data = json_decode($request->getContent(), true);
+        if (!is_array($data)) {
+            return new JsonResponse(['error' => 'Données invalides'], 400);
+        }
+
+        $conn = $em->getConnection();
+        $conn->executeStatement("
+        CREATE TABLE IF NOT EXISTS plan_pin_states (
+            pin_id VARCHAR(64) NOT NULL,
+            year INT NOT NULL,
+            month INT NOT NULL,
+            status VARCHAR(20) NOT NULL,
+            note TEXT,
+            updated_by VARCHAR(100),
+            completed_at VARCHAR(40),
+            PRIMARY KEY (pin_id, year, month)
+        )
+    ");
+
+        foreach ($data as $pinId => $state) {
+            $conn->executeStatement(
+                "INSERT INTO plan_pin_states (pin_id, year, month, status, note, updated_by, completed_at)
+             VALUES (:pin_id, :year, :month, :status, :note, :updated_by, :completed_at)
+             ON CONFLICT(pin_id, year, month) DO UPDATE SET
+                status = excluded.status,
+                note = excluded.note,
+                updated_by = excluded.updated_by,
+                completed_at = excluded.completed_at",
+                [
+                    'pin_id' => $pinId,
+                    'year' => $year,
+                    'month' => $month,
+                    'status' => $state['status'] ?? 'A_FAIRE',
+                    'note' => $state['note'] ?? '',
+                    'updated_by' => $state['updatedBy'] ?? '',
+                    'completed_at' => $state['completedAt'] ?? null
+                ]
+            );
+        }
+
+        return new JsonResponse(['success' => true]);
     }
 }

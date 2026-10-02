@@ -67,9 +67,7 @@ function formatCompletedAt(isoString) {
 
 export default function App() {
   const currentDate = new Date();
-  const [selectedMonth, setSelectedMonth] = useState(
-    currentDate.getMonth() + 1,
-  );
+  const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1);
   const [selectedYear] = useState(currentDate.getFullYear());
   const [tasks, setTasks] = useState([]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -80,33 +78,25 @@ export default function App() {
   const [photos, setPhotos] = useState({});
   const [previewImage, setPreviewImage] = useState(null);
 
-  const [user, setUser] = useState(
-    () => localStorage.getItem("pool_user") || "Grégory",
-  );
+  const [user, setUser] = useState(() => localStorage.getItem("pool_user") || "Grégory");
   const [keyInput, setKeyInput] = useState(() => getApiKey());
   const [showSettings, setShowSettings] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [onlyPending, setOnlyPending] = useState(false);
 
-  // Historique spécifique d'une tâche
   const [historyTask, setHistoryTask] = useState(null);
   const [historyData, setHistoryData] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  // Calque du plan : null = fermé, sinon "extincteur", "baes", "all", etc.
   const [planLayer, setPlanLayer] = useState(null);
 
-  // Pastilles du plan et leurs statuts pour le calcul de progression
   const [planPins, setPlanPins] = useState(() => {
     const cached = localStorage.getItem("pool_plan_pins");
     return cached ? JSON.parse(cached) : [];
   });
 
-  const [pinStates, setPinStates] = useState(() => {
-    const cached = localStorage.getItem("pool_pin_states");
-    return cached ? JSON.parse(cached) : {};
-  });
+  const [pinStates, setPinStates] = useState({});
 
   const {
     needRefresh: [needRefresh],
@@ -120,15 +110,12 @@ export default function App() {
     },
   });
 
+  // Chargement des tâches et des états mensuels de pastilles
   useEffect(() => {
     let isMounted = true;
 
     async function loadData() {
-      const {
-        data,
-        online,
-        authError: err,
-      } = await fetchTasks(selectedYear, selectedMonth);
+      const { data, online, authError: err } = await fetchTasks(selectedYear, selectedMonth);
       if (!isMounted) return;
 
       setAuthError(err);
@@ -145,6 +132,23 @@ export default function App() {
       });
       setOpenCategories(cats);
       setNotes(initialNotes);
+
+      // Chargement des états de pastilles depuis le serveur
+      try {
+        const res = await fetch(`${API_BASE_URL}/plan-pin-states/${selectedYear}/${selectedMonth}`, {
+          headers: { "X-API-KEY": getApiKey() },
+        });
+        if (res.ok) {
+          const serverStates = await res.json();
+          if (isMounted) {
+            setPinStates(serverStates || {});
+            localStorage.setItem("pool_pin_states", JSON.stringify(serverStates || {}));
+          }
+        }
+      } catch {
+        const cached = localStorage.getItem("pool_pin_states");
+        if (cached && isMounted) setPinStates(JSON.parse(cached));
+      }
     }
 
     loadData();
@@ -154,7 +158,7 @@ export default function App() {
     };
   }, [selectedYear, selectedMonth]);
 
-  // Synchronisation des pastilles depuis l'API Alwaysdata au démarrage
+  // Chargement de l'inventaire des pastilles
   useEffect(() => {
     let isMounted = true;
     async function loadPinsFromApi() {
@@ -169,8 +173,8 @@ export default function App() {
             localStorage.setItem("pool_plan_pins", JSON.stringify(data));
           }
         }
-      } catch {
-        // Mode hors ligne : conserve le cache local
+      } catch (err) {
+        console.warn("Mode hors-ligne ou erreur de chargement des pastilles :", err);
       }
     }
     loadPinsFromApi();
@@ -183,9 +187,7 @@ export default function App() {
     const handleStatus = () => {
       const online = navigator.onLine;
       setIsOnline(online);
-      if (online) {
-        triggerSync();
-      }
+      if (online) triggerSync();
     };
 
     window.addEventListener("online", handleStatus);
@@ -216,7 +218,7 @@ export default function App() {
       currentNote,
       operator,
       completedAt,
-      currentPhoto,
+      currentPhoto
     );
 
     setTasks((prev) =>
@@ -230,16 +232,15 @@ export default function App() {
               completedAt: completedAt,
               photoBase64: currentPhoto,
             }
-          : t,
-      ),
+          : t
+      )
     );
   };
 
-// Mise à jour du statut d'une pastille et répercussion automatique sur la tâche parente
+  // Mise à jour du statut d'une pastille + synchronisation automatique avec la tâche parente
   const handlePinStatusUpdate = async (pin, status, note = "") => {
     const now = new Date().toISOString();
-    
-    // 1. Mise à jour de l'état local des pastilles
+
     const updatedStates = {
       ...pinStates,
       [pin.id]: {
@@ -252,10 +253,24 @@ export default function App() {
     setPinStates(updatedStates);
     localStorage.setItem("pool_pin_states", JSON.stringify(updatedStates));
 
+    // Sauvegarde immédiate sur Alwaysdata
+    try {
+      fetch(`${API_BASE_URL}/plan-pin-states/${selectedYear}/${selectedMonth}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-KEY": getApiKey(),
+        },
+        body: JSON.stringify(updatedStates),
+      });
+    } catch (e) {
+      console.warn("Erreur sauvegarde pin state :", e);
+    }
+
     const pinType = pin.type;
     const allPinsOfType = planPins.filter((p) => p.type === pinType);
 
-    // 2. Détection de la tâche correspondante
+    // Détection de la tâche parente
     const targetTask = tasks.find((t) => {
       const tLow = (t.title || "").toLowerCase();
       if (pinType === "extincteur") return tLow.includes("extincteur");
@@ -267,13 +282,12 @@ export default function App() {
 
     if (!targetTask) return;
 
-    // 3. Détection des réserves
+    // Détection des réserves
     const reservesOfThisType = allPinsOfType.filter(
       (p) => updatedStates[p.id]?.status === "RESERVE"
     );
 
     if (reservesOfThisType.length > 0) {
-      // Regroupement des libellés et notes d'anomalies
       const combinedNotes = reservesOfThisType
         .map((p) => {
           const itemNote = updatedStates[p.id]?.note;
@@ -281,10 +295,8 @@ export default function App() {
         })
         .join(" | ");
 
-      // Mise à jour synchrone de l'état des notes pour affichage immédiat
       setNotes((prev) => ({ ...prev, [targetTask.id]: combinedNotes }));
 
-      // Mise à jour de l'état local des tâches (passe le bouton en orange)
       setTasks((prev) =>
         prev.map((t) =>
           t.id === targetTask.id
@@ -299,7 +311,6 @@ export default function App() {
         )
       );
 
-      // Persistance sur le serveur Alwaysdata
       await updateTaskStatus(
         targetTask.id,
         selectedYear,
@@ -311,7 +322,6 @@ export default function App() {
         photos[targetTask.id] || null
       );
     } else {
-      // 4. Si aucune réserve, vérification si tous les points sont en "FAIT"
       const checkedDoneCount = allPinsOfType.filter(
         (p) => updatedStates[p.id]?.status === "FAIT"
       ).length;
@@ -348,15 +358,15 @@ export default function App() {
       noteText,
       user,
       task.completedAt,
-      currentPhoto,
+      currentPhoto
     );
 
     setTasks((prev) =>
       prev.map((t) =>
         t.id === task.id
           ? { ...t, observation: noteText, photoBase64: currentPhoto }
-          : t,
-      ),
+          : t
+      )
     );
   };
 
@@ -510,24 +520,19 @@ export default function App() {
                 className="month-select"
               >
                 {MONTH_NAMES.map((name, idx) => (
-                  <option
-                    key={idx + 1}
-                    value={idx + 1}
-                    className="month-option"
-                  >
+                  <option key={idx + 1} value={idx + 1} className="month-option">
                     {name} {selectedYear}
                   </option>
                 ))}
               </select>
 
-              {/* BOUTONS EXPORT Excel & PDF */}
               <div className="export-actions no-print">
                 <button
                   onClick={() =>
                     exportTasksToExcel(
                       dueTasks,
                       MONTH_NAMES[selectedMonth - 1],
-                      selectedYear,
+                      selectedYear
                     )
                   }
                   className="export-button"
@@ -541,7 +546,7 @@ export default function App() {
                     exportTasksToPDF(
                       dueTasks,
                       MONTH_NAMES[selectedMonth - 1],
-                      selectedYear,
+                      selectedYear
                     )
                   }
                   className="export-button"
@@ -572,7 +577,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* BARRE DE RECHERCHE ET FILTRES RAPIDES */}
+        {/* BARRE DE RECHERCHE ET FILTRES */}
         <div className="task-filters no-print">
           <div className="search-box">
             <Search size={17} color="#94a3b8" className="search-icon" />
@@ -584,10 +589,7 @@ export default function App() {
               className="search-input"
             />
             {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="clear-search"
-              >
+              <button onClick={() => setSearchQuery("")} className="clear-search">
                 <X size={15} />
               </button>
             )}
