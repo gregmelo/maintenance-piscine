@@ -658,7 +658,7 @@ class ApiController extends AbstractController
         return $this->json(['success' => true, 'count' => count($pins)]);
     }
 
-    #[Route('/api/plan-pin-states/{year}/{month}', name: 'api_plan_pin_states_get', methods: ['GET'])]
+    #[Route('/plan-pin-states/{year}/{month}', name: 'api_plan_pin_states_get', methods: ['GET'])]
     public function getPinStates(int $year, int $month, Request $request, EntityManagerInterface $em): JsonResponse
     {
         $apiKey = $request->headers->get('X-API-KEY');
@@ -701,7 +701,7 @@ class ApiController extends AbstractController
         return new JsonResponse($states);
     }
 
-    #[Route('/api/plan-pin-states/{year}/{month}', name: 'api_plan_pin_states_save', methods: ['POST'])]
+    #[Route('/plan-pin-states/{year}/{month}', name: 'api_plan_pin_states_save', methods: ['POST'])]
     public function savePinStates(int $year, int $month, Request $request, EntityManagerInterface $em): JsonResponse
     {
         $apiKey = $request->headers->get('X-API-KEY');
