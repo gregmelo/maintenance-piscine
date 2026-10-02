@@ -83,7 +83,7 @@ export async function triggerSync() {
         'Content-Type': 'application/json',
         'X-API-KEY': apiKey,
       },
-      body: JSON.stringify(pending)
+      body: JSON.stringify({ updates: pending })
     });
 
     if (res.ok) {
