@@ -19,7 +19,6 @@ import { getApiKey } from "../syncService";
 
 const API_BASE_URL = "https://vericelgregory.alwaysdata.net/piscine/api";
 
-// Constante locale au composant (sans export pour satisfaire React Fast Refresh)
 const PIN_TYPES = {
   extincteur: { label: "Extincteur", icon: Flame, color: "#ef4444" },
   baes: {
@@ -95,8 +94,10 @@ export default function InteractivePlan({
     initialLayer === "all" ? "extincteur" : initialLayer,
   );
   const [zoom, setZoom] = useState(1);
-
   const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 });
+
+  const containerRef = useRef(null);
+  const apiKey = getApiKey();
 
   const handleMouseMove = (e) => {
     if (!isAdding) return;
@@ -106,10 +107,6 @@ export default function InteractivePlan({
     setCursorPos({ x: parseFloat(x), y: parseFloat(y) });
   };
 
-  const containerRef = useRef(null);
-  const apiKey = getApiKey();
-
-  // Chargement des pastilles depuis Alwaysdata
   useEffect(() => {
     let isMounted = true;
 
@@ -126,7 +123,7 @@ export default function InteractivePlan({
           }
         }
       } catch {
-        // Mode hors-ligne : conserve les pastilles en cache local
+        // Cache local conservé hors ligne
       }
     }
 
@@ -137,7 +134,6 @@ export default function InteractivePlan({
     };
   }, [apiKey]);
 
-  // Synchronisation des pastilles vers le serveur
   const persistPins = async (updatedPins) => {
     setPins(updatedPins);
     localStorage.setItem("pool_plan_pins", JSON.stringify(updatedPins));
@@ -241,14 +237,17 @@ export default function InteractivePlan({
           <div className="interactive-plan-header-actions">
             <div className="interactive-plan-zoom-controls">
               <button
-                onClick={() => setZoom((z) => Math.min(2.5, z + 0.25))}
+                onClick={() => setZoom((z) => Math.min(3, Number((z + 0.25).toFixed(2))))}
                 className="interactive-plan-zoom-button"
                 title="Zoomer"
               >
                 <ZoomIn size={16} />
               </button>
+              <span className="interactive-plan-zoom-level">
+                {Math.round(zoom * 100)}%
+              </span>
               <button
-                onClick={() => setZoom((z) => Math.max(1, z - 0.25))}
+                onClick={() => setZoom((z) => Math.max(1, Number((z - 0.25).toFixed(2))))}
                 className="interactive-plan-zoom-button"
                 title="Dézoomer"
               >
@@ -335,39 +334,19 @@ export default function InteractivePlan({
           <div
             onClick={handleImageClick}
             onMouseMove={handleMouseMove}
-            className="interactive-plan-canvas"
+            className={`interactive-plan-canvas ${isAdding ? "is-adding-mode" : ""}`}
             style={{
-              position: "relative",
-              display: "inline-block",
-              userSelect: "none",
-              transform: `scale(${zoom})`,
-              transformOrigin: "center center",
-              transition: "transform 0.15s ease-out",
-              cursor: isAdding ? "crosshair" : "default",
+              width: `${zoom * 100}%`,
+              maxWidth: zoom === 1 ? "100%" : "none",
             }}
           >
-            {/* BADGE DE COORDONNÉES EN MODE PLACEMENT */}
+            {/* BADGE DE COORDONNÉES */}
             {isAdding && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: "10px",
-                  left: "10px",
-                  backgroundColor: "rgba(15, 23, 42, 0.85)",
-                  color: "#38bdf8",
-                  padding: "4px 10px",
-                  borderRadius: "6px",
-                  fontSize: "0.85rem",
-                  fontFamily: "monospace",
-                  fontWeight: "bold",
-                  zIndex: 50,
-                  pointerEvents: "none",
-                  boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
-                }}
-              >
-                Coordonnées : X {cursorPos.x}% | Y {cursorPos.y}%
+              <div className="interactive-plan-coords-badge">
+                Coordonnées : X {cursorPos.x}% | Y {cursorPos.y}% (cliquez pour placer)
               </div>
             )}
+
             <img
               src="./plans/plan_niveau_0.png"
               alt="Plan Niveau 0"
@@ -382,10 +361,11 @@ export default function InteractivePlan({
                 <div
                   key={pin.id}
                   onClick={(e) => {
+                    if (isAdding) return;
                     e.stopPropagation();
                     setSelectedPin(pin);
                   }}
-                  className="interactive-plan-pin"
+                  className={`interactive-plan-pin ${isAdding ? "is-disabled-placement" : ""}`}
                   style={{
                     left: `${pin.x}%`,
                     top: `${pin.y}%`,
@@ -394,7 +374,7 @@ export default function InteractivePlan({
                   }}
                   title={pin.title}
                 >
-                  <PinIcon size={13} color="#ffffff" />
+                  <PinIcon size={12} color="#ffffff" />
                 </div>
               );
             })}
