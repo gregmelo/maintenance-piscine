@@ -22,19 +22,59 @@ const API_BASE_URL = "https://vericelgregory.alwaysdata.net/piscine/api";
 // Constante locale au composant (sans export pour satisfaire React Fast Refresh)
 const PIN_TYPES = {
   extincteur: { label: "Extincteur", icon: Flame, color: "#ef4444" },
-  baes: { label: "BAES / Éclairage de secours", icon: Lightbulb, color: "#10b981" },
+  baes: {
+    label: "BAES / Éclairage de secours",
+    icon: Lightbulb,
+    color: "#10b981",
+  },
   desenfumage: { label: "Commande Désenfumage", icon: Wind, color: "#3b82f6" },
   coupure: { label: "Arrêt d'urgence / Coupure", icon: Zap, color: "#f59e0b" },
   issue: { label: "Issue de secours", icon: DoorOpen, color: "#8b5cf6" },
 };
 
 const DEFAULT_PINS = [
-  { id: "ext_1", type: "extincteur", title: "Extincteur n°1 — Hall Accueil", x: 63.5, y: 36.8 },
-  { id: "ext_2", type: "extincteur", title: "Extincteur n°2 — Dégagement Vestiaires", x: 54.2, y: 45.1 },
-  { id: "ext_3", type: "extincteur", title: "Extincteur n°3 — Local Chaufferie", x: 82.5, y: 81.2 },
-  { id: "baes_1", type: "baes", title: "BAES Sortie Principale Hall", x: 61.2, y: 32.1 },
-  { id: "des_1", type: "desenfumage", title: "Désenfumage — Circulation Vestiaires", x: 69.8, y: 33.5 },
-  { id: "coup_1", type: "coupure", title: "Coupure Gaz Chaufferie", x: 82.0, y: 85.0 },
+  {
+    id: "ext_1",
+    type: "extincteur",
+    title: "Extincteur n°1 — Hall Accueil",
+    x: 63.5,
+    y: 36.8,
+  },
+  {
+    id: "ext_2",
+    type: "extincteur",
+    title: "Extincteur n°2 — Dégagement Vestiaires",
+    x: 54.2,
+    y: 45.1,
+  },
+  {
+    id: "ext_3",
+    type: "extincteur",
+    title: "Extincteur n°3 — Local Chaufferie",
+    x: 82.5,
+    y: 81.2,
+  },
+  {
+    id: "baes_1",
+    type: "baes",
+    title: "BAES Sortie Principale Hall",
+    x: 61.2,
+    y: 32.1,
+  },
+  {
+    id: "des_1",
+    type: "desenfumage",
+    title: "Désenfumage — Circulation Vestiaires",
+    x: 69.8,
+    y: 33.5,
+  },
+  {
+    id: "coup_1",
+    type: "coupure",
+    title: "Coupure Gaz Chaufferie",
+    x: 82.0,
+    y: 85.0,
+  },
 ];
 
 export default function InteractivePlan({
@@ -51,8 +91,20 @@ export default function InteractivePlan({
 
   const [selectedPin, setSelectedPin] = useState(null);
   const [isAdding, setIsAdding] = useState(false);
-  const [newPinType, setNewPinType] = useState(initialLayer === "all" ? "extincteur" : initialLayer);
+  const [newPinType, setNewPinType] = useState(
+    initialLayer === "all" ? "extincteur" : initialLayer,
+  );
   const [zoom, setZoom] = useState(1);
+
+  const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 });
+
+  const handleMouseMove = (e) => {
+    if (!isAdding) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = (((e.clientX - rect.left) / rect.width) * 100).toFixed(1);
+    const y = (((e.clientY - rect.top) / rect.height) * 100).toFixed(1);
+    setCursorPos({ x: parseFloat(x), y: parseFloat(y) });
+  };
 
   const containerRef = useRef(null);
   const apiKey = getApiKey();
@@ -115,8 +167,12 @@ export default function InteractivePlan({
     if (!isAdding) return;
 
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = parseFloat((((e.clientX - rect.left) / rect.width) * 100).toFixed(1));
-    const y = parseFloat((((e.clientY - rect.top) / rect.height) * 100).toFixed(1));
+    const x = parseFloat(
+      (((e.clientX - rect.left) / rect.width) * 100).toFixed(1),
+    );
+    const y = parseFloat(
+      (((e.clientY - rect.top) / rect.height) * 100).toFixed(1),
+    );
 
     const defaultTitle = `${PIN_TYPES[newPinType]?.label || "Point"} n°${
       pins.filter((p) => p.type === newPinType).length + 1
@@ -137,33 +193,40 @@ export default function InteractivePlan({
   };
 
   const handleDeletePin = (pinId) => {
-    if (!window.confirm("Supprimer cette pastille du plan pour tous les agents ?")) return;
+    if (
+      !window.confirm("Supprimer cette pastille du plan pour tous les agents ?")
+    )
+      return;
     persistPins(pins.filter((p) => p.id !== pinId));
     setSelectedPin(null);
   };
 
-  const visiblePins = activeLayer === "all" ? pins : pins.filter((p) => p.type === activeLayer);
+  const visiblePins =
+    activeLayer === "all" ? pins : pins.filter((p) => p.type === activeLayer);
 
   const getPinStatus = (pin) => {
     const task = tasks.find(
       (t) =>
         t.title.toLowerCase().includes(pin.title.toLowerCase()) ||
-        pin.title.toLowerCase().includes(t.title.toLowerCase())
+        pin.title.toLowerCase().includes(t.title.toLowerCase()),
     );
 
-    if (!task) return { status: "A_FAIRE", color: PIN_TYPES[pin.type]?.color || "#ef4444", task: null };
-    if (task.status === "FAIT") return { status: "FAIT", color: "#22c55e", task };
-    if (task.status === "RESERVE") return { status: "RESERVE", color: "#f59e0b", task };
+    if (!task)
+      return {
+        status: "A_FAIRE",
+        color: PIN_TYPES[pin.type]?.color || "#ef4444",
+        task: null,
+      };
+    if (task.status === "FAIT")
+      return { status: "FAIT", color: "#22c55e", task };
+    if (task.status === "RESERVE")
+      return { status: "RESERVE", color: "#f59e0b", task };
     return { status: "A_FAIRE", color: "#ef4444", task };
   };
 
   return (
-    <div
-      className="interactive-plan-overlay"
-    >
-      <div
-        className="interactive-plan-modal"
-      >
+    <div className="interactive-plan-overlay">
+      <div className="interactive-plan-modal">
         {/* EN-TÊTE */}
         <div className="interactive-plan-header">
           <div>
@@ -200,10 +263,7 @@ export default function InteractivePlan({
               </button>
             </div>
 
-            <button
-              onClick={onClose}
-              className="interactive-plan-close-button"
-            >
+            <button onClick={onClose} className="interactive-plan-close-button">
               <X size={22} />
             </button>
           </div>
@@ -211,16 +271,15 @@ export default function InteractivePlan({
 
         {/* ONGLETS DES CALQUES */}
         <div className="interactive-plan-layer-tabs">
-          <span className="interactive-plan-layer-label">
-            Calque :
-          </span>
+          <span className="interactive-plan-layer-label">Calque :</span>
 
           <button
             onClick={() => handleSelectLayer("extincteur")}
             className={`interactive-plan-layer-tab ${activeLayer === "extincteur" ? "is-active" : ""}`}
             style={{ "--layer-color": "#ef4444" }}
           >
-            <Flame size={15} /> Extincteurs ({pins.filter((p) => p.type === "extincteur").length})
+            <Flame size={15} /> Extincteurs (
+            {pins.filter((p) => p.type === "extincteur").length})
           </button>
 
           <button
@@ -228,7 +287,8 @@ export default function InteractivePlan({
             className={`interactive-plan-layer-tab ${activeLayer === "baes" ? "is-active" : ""}`}
             style={{ "--layer-color": "#10b981" }}
           >
-            <Lightbulb size={15} /> BAES / Éclairage ({pins.filter((p) => p.type === "baes").length})
+            <Lightbulb size={15} /> BAES / Éclairage (
+            {pins.filter((p) => p.type === "baes").length})
           </button>
 
           <button
@@ -236,7 +296,8 @@ export default function InteractivePlan({
             className={`interactive-plan-layer-tab ${activeLayer === "desenfumage" ? "is-active" : ""}`}
             style={{ "--layer-color": "#3b82f6" }}
           >
-            <Wind size={15} /> Désenfumage ({pins.filter((p) => p.type === "desenfumage").length})
+            <Wind size={15} /> Désenfumage (
+            {pins.filter((p) => p.type === "desenfumage").length})
           </button>
 
           <button
@@ -244,7 +305,8 @@ export default function InteractivePlan({
             className={`interactive-plan-layer-tab ${activeLayer === "coupure" ? "is-active" : ""}`}
             style={{ "--layer-color": "#f59e0b" }}
           >
-            <Zap size={15} /> Coupures Élec / Gaz ({pins.filter((p) => p.type === "coupure").length})
+            <Zap size={15} /> Coupures Élec / Gaz (
+            {pins.filter((p) => p.type === "coupure").length})
           </button>
 
           <button
@@ -261,21 +323,51 @@ export default function InteractivePlan({
               className={`interactive-plan-add-button ${isAdding ? "is-adding" : ""}`}
             >
               <Plus size={15} />
-              {isAdding ? "Annuler placement" : `Ajouter un ${PIN_TYPES[newPinType]?.label || "point"}`}
+              {isAdding
+                ? "Annuler placement"
+                : `Ajouter un ${PIN_TYPES[newPinType]?.label || "point"}`}
             </button>
           </div>
         </div>
 
         {/* AFFICHAGE DU PLAN */}
-        <div
-          ref={containerRef}
-          className="interactive-plan-viewport"
-        >
+        <div ref={containerRef} className="interactive-plan-viewport">
           <div
             onClick={handleImageClick}
+            onMouseMove={handleMouseMove}
             className="interactive-plan-canvas"
-            style={{ transform: `scale(${zoom})`, cursor: isAdding ? "crosshair" : "default" }}
+            style={{
+              position: "relative",
+              display: "inline-block",
+              userSelect: "none",
+              transform: `scale(${zoom})`,
+              transformOrigin: "center center",
+              transition: "transform 0.15s ease-out",
+              cursor: isAdding ? "crosshair" : "default",
+            }}
           >
+            {/* BADGE DE COORDONNÉES EN MODE PLACEMENT */}
+            {isAdding && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "10px",
+                  left: "10px",
+                  backgroundColor: "rgba(15, 23, 42, 0.85)",
+                  color: "#38bdf8",
+                  padding: "4px 10px",
+                  borderRadius: "6px",
+                  fontSize: "0.85rem",
+                  fontFamily: "monospace",
+                  fontWeight: "bold",
+                  zIndex: 50,
+                  pointerEvents: "none",
+                  boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
+                }}
+              >
+                Coordonnées : X {cursorPos.x}% | Y {cursorPos.y}%
+              </div>
+            )}
             <img
               src="./plans/plan_niveau_0.png"
               alt="Plan Niveau 0"
@@ -374,4 +466,3 @@ export default function InteractivePlan({
     </div>
   );
 }
-
