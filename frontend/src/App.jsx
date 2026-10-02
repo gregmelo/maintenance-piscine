@@ -235,7 +235,7 @@ export default function App() {
     );
   };
 
-  // Mise à jour du statut d'une pastille et validation automatique à 100%
+// Mise à jour du statut d'une pastille et répercussion automatique sur la tâche parente
   const handlePinStatusUpdate = async (pin, status, note = "") => {
     const now = new Date().toISOString();
     const updatedStates = {
@@ -252,23 +252,67 @@ export default function App() {
 
     const pinType = pin.type;
     const allPinsOfType = planPins.filter((p) => p.type === pinType);
-    const checkedPinsCount = allPinsOfType.filter((p) => {
-      const s = updatedStates[p.id]?.status;
-      return s === "FAIT" || s === "RESERVE";
-    }).length;
 
-    // Si tous les organes de cette catégorie ont été vérifiés sur le plan
-    if (allPinsOfType.length > 0 && checkedPinsCount === allPinsOfType.length) {
-      const targetTask = tasks.find((t) => {
-        const tLow = (t.title || "").toLowerCase();
-        if (pinType === "extincteur") return tLow.includes("extincteur");
-        if (pinType === "baes") return tLow.includes("baes") || tLow.includes("éclairage");
-        if (pinType === "desenfumage") return tLow.includes("désenfumage") || tLow.includes("desenfumage");
-        if (pinType === "coupure") return tLow.includes("coupure") || tLow.includes("gaz") || tLow.includes("arrêt");
-        return false;
-      });
+    // Détection de la tâche correspondante
+    const targetTask = tasks.find((t) => {
+      const tLow = (t.title || "").toLowerCase();
+      if (pinType === "extincteur") return tLow.includes("extincteur");
+      if (pinType === "baes") return tLow.includes("baes") || tLow.includes("éclairage");
+      if (pinType === "desenfumage") return tLow.includes("désenfumage") || tLow.includes("desenfumage");
+      if (pinType === "coupure") return tLow.includes("coupure") || tLow.includes("gaz") || tLow.includes("arrêt");
+      return false;
+    });
 
-      if (targetTask && targetTask.status !== "FAIT") {
+    if (!targetTask) return;
+
+    // 1. Y a-t-il au moins un élément en réserve parmi ceux de ce type ?
+    const reservesOfThisType = allPinsOfType.filter(
+      (p) => updatedStates[p.id]?.status === "RESERVE"
+    );
+
+    if (reservesOfThisType.length > 0) {
+      // Construction d'une note regroupant les anomalies constatées
+      const combinedNotes = reservesOfThisType
+        .map((p) => {
+          const itemNote = updatedStates[p.id]?.note;
+          return `${p.title}${itemNote ? ` : ${itemNote}` : ""}`;
+        })
+        .join(" | ");
+
+      // Mémoriser la note dans l'état local et persister la tâche en RESERVE
+      setNotes((prev) => ({ ...prev, [targetTask.id]: combinedNotes }));
+
+      await updateTaskStatus(
+        targetTask.id,
+        selectedYear,
+        selectedMonth,
+        "RESERVE",
+        combinedNotes,
+        user,
+        now,
+        photos[targetTask.id] || null
+      );
+
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === targetTask.id
+            ? {
+                ...t,
+                status: "RESERVE",
+                observation: combinedNotes,
+                updatedBy: user,
+                completedAt: now,
+              }
+            : t
+        )
+      );
+    } else {
+      // 2. Aucune réserve : vérifier si 100% des organes sont contrôlés en "FAIT"
+      const checkedDoneCount = allPinsOfType.filter(
+        (p) => updatedStates[p.id]?.status === "FAIT"
+      ).length;
+
+      if (allPinsOfType.length > 0 && checkedDoneCount === allPinsOfType.length) {
         await handleStatusChange(targetTask.id, "FAIT");
       }
     }
