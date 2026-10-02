@@ -97,6 +97,17 @@ export default function App() {
   // Calque du plan : null = fermé, sinon "extincteur", "baes", "all", etc.
   const [planLayer, setPlanLayer] = useState(null);
 
+  // Pastilles du plan et leurs statuts pour le calcul de progression
+  const [planPins, setPlanPins] = useState(() => {
+    const cached = localStorage.getItem("pool_plan_pins");
+    return cached ? JSON.parse(cached) : [];
+  });
+
+  const [pinStates, setPinStates] = useState(() => {
+    const cached = localStorage.getItem("pool_pin_states");
+    return cached ? JSON.parse(cached) : {};
+  });
+
   const {
     needRefresh: [needRefresh],
     updateServiceWorker,
@@ -142,6 +153,31 @@ export default function App() {
       isMounted = false;
     };
   }, [selectedYear, selectedMonth]);
+
+  // Synchronisation des pastilles depuis l'API Alwaysdata au démarrage
+  useEffect(() => {
+    let isMounted = true;
+    async function loadPinsFromApi() {
+      try {
+        const res = await fetch(`${API_BASE_URL}/plan-pins`, {
+          headers: { "X-API-KEY": getApiKey() },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted && Array.isArray(data) && data.length > 0) {
+            setPlanPins(data);
+            localStorage.setItem("pool_plan_pins", JSON.stringify(data));
+          }
+        }
+      } catch {
+        // Mode hors ligne : conserve le cache local
+      }
+    }
+    loadPinsFromApi();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     const handleStatus = () => {
@@ -197,6 +233,45 @@ export default function App() {
           : t,
       ),
     );
+  };
+
+  // Mise à jour du statut d'une pastille et validation automatique à 100%
+  const handlePinStatusUpdate = async (pin, status, note = "") => {
+    const now = new Date().toISOString();
+    const updatedStates = {
+      ...pinStates,
+      [pin.id]: {
+        status,
+        note,
+        updatedBy: user,
+        completedAt: now,
+      },
+    };
+    setPinStates(updatedStates);
+    localStorage.setItem("pool_pin_states", JSON.stringify(updatedStates));
+
+    const pinType = pin.type;
+    const allPinsOfType = planPins.filter((p) => p.type === pinType);
+    const checkedPinsCount = allPinsOfType.filter((p) => {
+      const s = updatedStates[p.id]?.status;
+      return s === "FAIT" || s === "RESERVE";
+    }).length;
+
+    // Si tous les organes de cette catégorie ont été vérifiés sur le plan
+    if (allPinsOfType.length > 0 && checkedPinsCount === allPinsOfType.length) {
+      const targetTask = tasks.find((t) => {
+        const tLow = (t.title || "").toLowerCase();
+        if (pinType === "extincteur") return tLow.includes("extincteur");
+        if (pinType === "baes") return tLow.includes("baes") || tLow.includes("éclairage");
+        if (pinType === "desenfumage") return tLow.includes("désenfumage") || tLow.includes("desenfumage");
+        if (pinType === "coupure") return tLow.includes("coupure") || tLow.includes("gaz") || tLow.includes("arrêt");
+        return false;
+      });
+
+      if (targetTask && targetTask.status !== "FAIT") {
+        await handleStatusChange(targetTask.id, "FAIT");
+      }
+    }
   };
 
   const handleNoteChange = (taskId, text) => {
@@ -488,6 +563,8 @@ export default function App() {
           taskProps={{
             notes,
             photos,
+            planPins,
+            pinStates,
             onStatusChange: handleStatusChange,
             onNoteChange: handleNoteChange,
             onPhotoChange: handlePhotoChange,
@@ -514,12 +591,15 @@ export default function App() {
           formatDate={formatCompletedAt}
         />
 
-        {/* PLAN INTERACTIF AVEC GESTION DU CALQUE */}
+        {/* PLAN INTERACTIF */}
         {planLayer && (
           <InteractivePlan
             tasks={tasks}
             initialLayer={planLayer}
-            onStatusChange={handleStatusChange}
+            pins={planPins}
+            setPins={setPlanPins}
+            pinStates={pinStates}
+            onPinStatusUpdate={handlePinStatusUpdate}
             onClose={() => setPlanLayer(null)}
           />
         )}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import {
   CheckCircle2,
   AlertTriangle,
@@ -23,43 +23,38 @@ const API_BASE_URL = "https://vericelgregory.alwaysdata.net/piscine/api";
 
 const PIN_TYPES = {
   extincteur: { label: "Extincteur", icon: Flame, color: "#ef4444" },
-  baes: { label: "BAES / Éclairage de secours", icon: Lightbulb, color: "#10b981" },
+  baes: {
+    label: "BAES / Éclairage de secours",
+    icon: Lightbulb,
+    color: "#10b981",
+  },
   desenfumage: { label: "Commande Désenfumage", icon: Wind, color: "#3b82f6" },
   coupure: { label: "Arrêt d'urgence / Coupure", icon: Zap, color: "#f59e0b" },
   issue: { label: "Issue de secours", icon: DoorOpen, color: "#8b5cf6" },
 };
 
 export default function InteractivePlan({
-  tasks = [],
   initialLayer = "extincteur",
-  onStatusChange,
+  pins = [],
+  setPins,
+  pinStates = {},
+  onPinStatusUpdate,
   onClose,
 }) {
   const [activeLayer, setActiveLayer] = useState(initialLayer);
-  const [pins, setPins] = useState(() => {
-    const cached = localStorage.getItem("pool_plan_pins");
-    return cached ? JSON.parse(cached) : [];
-  });
-
-  // Mémorisation des statuts propres aux pastilles pour le mois en cours
-  const [pinStates, setPinStates] = useState(() => {
-    const cached = localStorage.getItem("pool_pin_states");
-    return cached ? JSON.parse(cached) : {};
-  });
-
   const [selectedPin, setSelectedPin] = useState(null);
   const [isAdding, setIsAdding] = useState(false);
-  const [newPinType, setNewPinType] = useState(initialLayer === "all" ? "extincteur" : initialLayer);
+  const [newPinType, setNewPinType] = useState(
+    initialLayer === "all" ? "extincteur" : initialLayer
+  );
   const [zoom, setZoom] = useState(1);
   const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 });
 
-  // Édition de réserve
   const [isEditingReserve, setIsEditingReserve] = useState(false);
   const [reserveNote, setReserveNote] = useState("");
 
   const containerRef = useRef(null);
   const apiKey = getApiKey();
-  const currentUser = localStorage.getItem("pool_user") || "Technicien";
 
   const handleMouseMove = (e) => {
     if (!isAdding) return;
@@ -69,32 +64,8 @@ export default function InteractivePlan({
     setCursorPos({ x: parseFloat(x), y: parseFloat(y) });
   };
 
-  useEffect(() => {
-    let isMounted = true;
-    async function fetchPins() {
-      try {
-        const res = await fetch(`${API_BASE_URL}/plan-pins`, {
-          headers: { "X-API-KEY": apiKey },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (isMounted && Array.isArray(data) && data.length > 0) {
-            setPins(data);
-            localStorage.setItem("pool_plan_pins", JSON.stringify(data));
-          }
-        }
-      } catch {
-        // Mode hors-ligne
-      }
-    }
-    fetchPins();
-    return () => {
-      isMounted = false;
-    };
-  }, [apiKey]);
-
   const persistPins = async (updatedPins) => {
-    setPins(updatedPins);
+    if (setPins) setPins(updatedPins);
     localStorage.setItem("pool_plan_pins", JSON.stringify(updatedPins));
     try {
       await fetch(`${API_BASE_URL}/plan-pins`, {
@@ -155,29 +126,9 @@ export default function InteractivePlan({
   };
 
   const handleSetStatus = (pin, status, note = "") => {
-    const now = new Date().toISOString();
-    const updatedStates = {
-      ...pinStates,
-      [pin.id]: {
-        status,
-        note,
-        updatedBy: currentUser,
-        completedAt: now,
-      },
-    };
-    setPinStates(updatedStates);
-    localStorage.setItem("pool_pin_states", JSON.stringify(updatedStates));
-
-    // Si une tâche liée existe dans la liste globale, on la met à jour
-    const matchingTask = tasks.find(
-      (t) =>
-        t.title.toLowerCase().includes(pin.title.toLowerCase()) ||
-        pin.title.toLowerCase().includes(t.title.toLowerCase())
-    );
-    if (matchingTask && onStatusChange) {
-      onStatusChange(matchingTask.id, status);
+    if (onPinStatusUpdate) {
+      onPinStatusUpdate(pin, status, note);
     }
-
     setIsEditingReserve(false);
     setReserveNote("");
   };
@@ -190,16 +141,6 @@ export default function InteractivePlan({
       if (state.status === "FAIT") return { status: "FAIT", color: "#22c55e", state };
       if (state.status === "RESERVE") return { status: "RESERVE", color: "#f59e0b", state };
     }
-
-    // Secours sur la liste des tâches
-    const task = tasks.find(
-      (t) =>
-        t.title.toLowerCase().includes(pin.title.toLowerCase()) ||
-        pin.title.toLowerCase().includes(t.title.toLowerCase())
-    );
-    if (task && task.status === "FAIT") return { status: "FAIT", color: "#22c55e", state: task };
-    if (task && task.status === "RESERVE") return { status: "RESERVE", color: "#f59e0b", state: task };
-
     return { status: "A_FAIRE", color: PIN_TYPES[pin.type]?.color || "#ef4444", state: null };
   };
 
@@ -369,7 +310,6 @@ export default function InteractivePlan({
                   {PIN_TYPES[selectedPin.type]?.label}
                 </span>
 
-                {/* Badge du statut en cours */}
                 <span
                   style={{
                     padding: "2px 8px",
@@ -396,9 +336,16 @@ export default function InteractivePlan({
                 {selectedPin.title}
               </div>
 
-              {/* Historique de vérification */}
               {activePinInfo.state && (
-                <div style={{ fontSize: "0.78rem", color: "#64748b", marginTop: "4px", display: "flex", gap: "12px" }}>
+                <div
+                  style={{
+                    fontSize: "0.78rem",
+                    color: "#64748b",
+                    marginTop: "4px",
+                    display: "flex",
+                    gap: "12px",
+                  }}
+                >
                   {activePinInfo.state.updatedBy && (
                     <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
                       <User size={13} /> {activePinInfo.state.updatedBy}
@@ -412,22 +359,37 @@ export default function InteractivePlan({
                 </div>
               )}
 
-              {/* Affichage de la réserve existante */}
               {activePinInfo.state?.note && (
-                <div style={{ fontSize: "0.8rem", color: "#b45309", background: "#fef3c7", padding: "4px 8px", borderRadius: "4px", marginTop: "6px" }}>
+                <div
+                  style={{
+                    fontSize: "0.8rem",
+                    color: "#b45309",
+                    background: "#fef3c7",
+                    padding: "4px 8px",
+                    borderRadius: "4px",
+                    marginTop: "6px",
+                  }}
+                >
                   <strong>Anomalie :</strong> {activePinInfo.state.note}
                 </div>
               )}
             </div>
 
-            {/* Saisie de réserve si demandée */}
             {isEditingReserve ? (
-              <div style={{ width: "100%", marginTop: "10px", display: "flex", gap: "8px", alignItems: "center" }}>
+              <div
+                style={{
+                  width: "100%",
+                  marginTop: "10px",
+                  display: "flex",
+                  gap: "8px",
+                  alignItems: "center",
+                }}
+              >
                 <input
                   type="text"
                   value={reserveNote}
                   onChange={(e) => setReserveNote(e.target.value)}
-                  placeholder="Préciser l'anomalie (ex: goupille manquante, pression basse...)"
+                  placeholder="Préciser l'anomalie..."
                   style={{
                     flex: 1,
                     padding: "8px 12px",
@@ -482,12 +444,11 @@ export default function InteractivePlan({
                   <AlertTriangle size={16} /> Signaler une réserve
                 </button>
 
-                {/* Bouton de suppression protégé : visible seulement si le mode ajout/admin est actif */}
                 {isAdding && (
                   <button
                     onClick={() => handleDeletePin(selectedPin.id)}
                     className="interactive-plan-delete-button"
-                    title="Supprimer définitivement cette pastille (Mode Admin)"
+                    title="Supprimer définitivement cette pastille"
                   >
                     <Trash2 size={16} /> Supprimer
                   </button>

@@ -14,6 +14,8 @@ export default function TaskItem({
   task,
   notes,
   photos,
+  planPins = [],
+  pinStates = {},
   onStatusChange,
   onNoteChange,
   onPhotoChange,
@@ -29,44 +31,38 @@ export default function TaskItem({
   const photo = photos[task.id] || task.photoUrl;
   const photoUrl = photos[task.id] || `${PHOTO_BASE_URL}${task.photoUrl}`;
 
-  // Détection automatique du calque approprié selon l'intitulé ou la catégorie
   const titleLower = (task.title || "").toLowerCase();
-  const catLower = (task.category || "").toLowerCase();
 
-  const isMappable =
-    catLower.includes("incendie") ||
-    catLower.includes("sécurité") ||
-    catLower.includes("electricite") ||
-    catLower.includes("éclairage") ||
-    titleLower.includes("extincteur") ||
-    titleLower.includes("baes") ||
-    titleLower.includes("désenfumage") ||
-    titleLower.includes("desenfumage") ||
-    titleLower.includes("gaz") ||
-    titleLower.includes("coupure") ||
-    titleLower.includes("tgbt");
+  // Détection du calque associé
+  let targetLayer = null;
+  if (titleLower.includes("extincteur")) targetLayer = "extincteur";
+  else if (titleLower.includes("baes") || titleLower.includes("secours")) targetLayer = "baes";
+  else if (titleLower.includes("désenfumage") || titleLower.includes("desenfumage")) targetLayer = "desenfumage";
+  else if (titleLower.includes("coupure") || titleLower.includes("gaz") || titleLower.includes("tgbt")) targetLayer = "coupure";
+
+  // Calcul du pourcentage de réalisation sur le plan
+  let planStats = null;
+  if (targetLayer && planPins.length > 0) {
+    const relatedPins = planPins.filter((p) => p.type === targetLayer);
+    if (relatedPins.length > 0) {
+      const verifiedPins = relatedPins.filter((p) => {
+        const st = pinStates[p.id]?.status;
+        return st === "FAIT" || st === "RESERVE";
+      }).length;
+      const percent = Math.round((verifiedPins / relatedPins.length) * 100);
+      planStats = {
+        total: relatedPins.length,
+        verified: verifiedPins,
+        percent,
+      };
+    }
+  }
 
   const handleOpenPlanForTask = (e) => {
     e.stopPropagation();
-    if (!onOpenPlan) return;
-
-    let targetLayer = "all";
-    if (titleLower.includes("extincteur")) {
-      targetLayer = "extincteur";
-    } else if (titleLower.includes("baes") || titleLower.includes("secours")) {
-      targetLayer = "baes";
-    } else if (titleLower.includes("désenfumage") || titleLower.includes("desenfumage")) {
-      targetLayer = "desenfumage";
-    } else if (
-      titleLower.includes("coupure") ||
-      titleLower.includes("gaz") ||
-      titleLower.includes("armoire") ||
-      titleLower.includes("tgbt")
-    ) {
-      targetLayer = "coupure";
+    if (onOpenPlan) {
+      onOpenPlan(targetLayer || "all");
     }
-
-    onOpenPlan(targetLayer);
   };
 
   return (
@@ -77,30 +73,65 @@ export default function TaskItem({
             <span className="task-title">{task.title}</span>
 
             <div style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-              {/* Bouton vers le Plan interactif pré-filtré */}
-              {isMappable && onOpenPlan && (
+              {targetLayer && onOpenPlan && (
                 <button
                   type="button"
                   onClick={handleOpenPlanForTask}
                   className="history-trigger no-print"
                   style={{ color: "#d97706" }}
-                  title="Localiser cet équipement sur le plan"
+                  title="Ouvrir sur le plan"
                 >
                   <Map size={14} />
                 </button>
               )}
 
-              {/* Bouton d'historique */}
               <button
                 type="button"
                 onClick={() => onOpenHistory(task)}
                 className="history-trigger no-print"
-                title="Consulter l'historique de cette tâche"
+                title="Consulter l'historique"
               >
                 <History size={14} />
               </button>
             </div>
           </div>
+
+          {/* JAUGE DE PROGRESSION LIÉE AU PLAN */}
+          {planStats && (
+            <div style={{ margin: "6px 0 2px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: "0.74rem",
+                  fontWeight: "600",
+                  color: planStats.percent === 100 ? "#16a34a" : "#0284c7",
+                }}
+              >
+                <span>Contrôlés sur plan : {planStats.verified} / {planStats.total}</span>
+                <span>{planStats.percent}%</span>
+              </div>
+              <div
+                style={{
+                  width: "100%",
+                  height: "5px",
+                  background: "#e2e8f0",
+                  borderRadius: "3px",
+                  overflow: "hidden",
+                  marginTop: "2px",
+                }}
+              >
+                <div
+                  style={{
+                    width: `${planStats.percent}%`,
+                    height: "100%",
+                    background: planStats.percent === 100 ? "#22c55e" : "#0284c7",
+                    transition: "width 0.3s ease",
+                  }}
+                />
+              </div>
+            </div>
+          )}
 
           <div className="task-meta">
             <span>{task.frequency}</span>
