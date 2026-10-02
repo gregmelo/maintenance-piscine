@@ -238,6 +238,8 @@ export default function App() {
 // Mise à jour du statut d'une pastille et répercussion automatique sur la tâche parente
   const handlePinStatusUpdate = async (pin, status, note = "") => {
     const now = new Date().toISOString();
+    
+    // 1. Mise à jour de l'état local des pastilles
     const updatedStates = {
       ...pinStates,
       [pin.id]: {
@@ -253,7 +255,7 @@ export default function App() {
     const pinType = pin.type;
     const allPinsOfType = planPins.filter((p) => p.type === pinType);
 
-    // Détection de la tâche correspondante
+    // 2. Détection de la tâche correspondante
     const targetTask = tasks.find((t) => {
       const tLow = (t.title || "").toLowerCase();
       if (pinType === "extincteur") return tLow.includes("extincteur");
@@ -265,13 +267,13 @@ export default function App() {
 
     if (!targetTask) return;
 
-    // 1. Y a-t-il au moins un élément en réserve parmi ceux de ce type ?
+    // 3. Détection des réserves
     const reservesOfThisType = allPinsOfType.filter(
       (p) => updatedStates[p.id]?.status === "RESERVE"
     );
 
     if (reservesOfThisType.length > 0) {
-      // Construction d'une note regroupant les anomalies constatées
+      // Regroupement des libellés et notes d'anomalies
       const combinedNotes = reservesOfThisType
         .map((p) => {
           const itemNote = updatedStates[p.id]?.note;
@@ -279,20 +281,10 @@ export default function App() {
         })
         .join(" | ");
 
-      // Mémoriser la note dans l'état local et persister la tâche en RESERVE
+      // Mise à jour synchrone de l'état des notes pour affichage immédiat
       setNotes((prev) => ({ ...prev, [targetTask.id]: combinedNotes }));
 
-      await updateTaskStatus(
-        targetTask.id,
-        selectedYear,
-        selectedMonth,
-        "RESERVE",
-        combinedNotes,
-        user,
-        now,
-        photos[targetTask.id] || null
-      );
-
+      // Mise à jour de l'état local des tâches (passe le bouton en orange)
       setTasks((prev) =>
         prev.map((t) =>
           t.id === targetTask.id
@@ -306,8 +298,20 @@ export default function App() {
             : t
         )
       );
+
+      // Persistance sur le serveur Alwaysdata
+      await updateTaskStatus(
+        targetTask.id,
+        selectedYear,
+        selectedMonth,
+        "RESERVE",
+        combinedNotes,
+        user,
+        now,
+        photos[targetTask.id] || null
+      );
     } else {
-      // 2. Aucune réserve : vérifier si 100% des organes sont contrôlés en "FAIT"
+      // 4. Si aucune réserve, vérification si tous les points sont en "FAIT"
       const checkedDoneCount = allPinsOfType.filter(
         (p) => updatedStates[p.id]?.status === "FAIT"
       ).length;
