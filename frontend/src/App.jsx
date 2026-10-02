@@ -110,6 +110,68 @@ export default function App() {
     },
   });
 
+  // Met à jour la tâche parente (statut RÉSERVE ou FAIT, et notes d'anomalies)
+  const applyPinStatesToTasks = (currentPinStates, currentPins, currentTasks) => {
+    if (!currentPins || currentPins.length === 0 || !currentTasks || currentTasks.length === 0) return;
+
+    const types = ["extincteur", "baes", "desenfumage", "coupure"];
+
+    for (const pinType of types) {
+      const allPinsOfType = currentPins.filter((p) => p.type === pinType);
+      if (allPinsOfType.length === 0) continue;
+
+      const targetTask = currentTasks.find((t) => {
+        const tLow = (t.title || "").toLowerCase();
+        if (pinType === "extincteur") return tLow.includes("extincteur");
+        if (pinType === "baes") return tLow.includes("baes") || tLow.includes("éclairage");
+        if (pinType === "desenfumage") return tLow.includes("désenfumage") || tLow.includes("desenfumage");
+        if (pinType === "coupure") return tLow.includes("coupure") || tLow.includes("gaz") || tLow.includes("arrêt");
+        return false;
+      });
+
+      if (!targetTask) continue;
+
+      const reservesOfThisType = allPinsOfType.filter(
+        (p) => currentPinStates[p.id]?.status === "RESERVE"
+      );
+
+      if (reservesOfThisType.length > 0) {
+        const combinedNotes = reservesOfThisType
+          .map((p) => {
+            const itemNote = currentPinStates[p.id]?.note;
+            return `${p.title}${itemNote ? ` : ${itemNote}` : ""}`;
+          })
+          .join(" | ");
+
+        setNotes((prev) => ({ ...prev, [targetTask.id]: combinedNotes }));
+
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === targetTask.id
+              ? {
+                  ...t,
+                  status: "RESERVE",
+                  observation: combinedNotes,
+                }
+              : t
+          )
+        );
+      } else {
+        const checkedDoneCount = allPinsOfType.filter(
+          (p) => currentPinStates[p.id]?.status === "FAIT"
+        ).length;
+
+        if (checkedDoneCount === allPinsOfType.length && allPinsOfType.length > 0) {
+          setTasks((prev) =>
+            prev.map((t) =>
+              t.id === targetTask.id ? { ...t, status: "FAIT" } : t
+            )
+          );
+        }
+      }
+    }
+  };
+
   // Chargement des tâches et des états mensuels de pastilles
   useEffect(() => {
     let isMounted = true;
@@ -119,12 +181,13 @@ export default function App() {
       if (!isMounted) return;
 
       setAuthError(err);
-      setTasks(data || []);
+      const loadedTasks = data || [];
+      setTasks(loadedTasks);
       setIsOnline(online);
 
       const cats = {};
       const initialNotes = {};
-      (data || []).forEach((t) => {
+      loadedTasks.forEach((t) => {
         cats[t.category] = true;
         if (t.observation) {
           initialNotes[t.id] = t.observation;
@@ -141,13 +204,20 @@ export default function App() {
         if (res.ok) {
           const serverStates = await res.json();
           if (isMounted) {
-            setPinStates(serverStates || {});
-            localStorage.setItem("pool_pin_states", JSON.stringify(serverStates || {}));
+            const states = serverStates || {};
+            setPinStates(states);
+            localStorage.setItem("pool_pin_states", JSON.stringify(states));
+            applyPinStatesToTasks(states, planPins, loadedTasks);
           }
         }
-      } catch {
+      } catch (e) {
+        console.warn("Mode hors-ligne ou erreur chargement états pastilles :", e);
         const cached = localStorage.getItem("pool_pin_states");
-        if (cached && isMounted) setPinStates(JSON.parse(cached));
+        if (cached && isMounted) {
+          const parsed = JSON.parse(cached);
+          setPinStates(parsed);
+          applyPinStatesToTasks(parsed, planPins, loadedTasks);
+        }
       }
     }
 
@@ -156,7 +226,7 @@ export default function App() {
     return () => {
       isMounted = false;
     };
-  }, [selectedYear, selectedMonth]);
+  }, [selectedYear, selectedMonth, planPins]);
 
   // Chargement de l'inventaire des pastilles
   useEffect(() => {
@@ -174,7 +244,7 @@ export default function App() {
           }
         }
       } catch (err) {
-        console.warn("Mode hors-ligne ou erreur de chargement des pastilles :", err);
+        console.warn("Mode hors-ligne ou erreur chargement plan-pins :", err);
       }
     }
     loadPinsFromApi();
@@ -253,7 +323,7 @@ export default function App() {
     setPinStates(updatedStates);
     localStorage.setItem("pool_pin_states", JSON.stringify(updatedStates));
 
-    // Sauvegarde immédiate sur Alwaysdata
+    // Sauvegarde sur Alwaysdata
     try {
       fetch(`${API_BASE_URL}/plan-pin-states/${selectedYear}/${selectedMonth}`, {
         method: "POST",
@@ -270,7 +340,6 @@ export default function App() {
     const pinType = pin.type;
     const allPinsOfType = planPins.filter((p) => p.type === pinType);
 
-    // Détection de la tâche parente
     const targetTask = tasks.find((t) => {
       const tLow = (t.title || "").toLowerCase();
       if (pinType === "extincteur") return tLow.includes("extincteur");
@@ -280,14 +349,12 @@ export default function App() {
       return false;
     });
 
-    if (!targetTask) return;
+    applyPinStatesToTasks(updatedStates, planPins, tasks);
 
-    // Détection des réserves
-    const reservesOfThisType = allPinsOfType.filter(
-      (p) => updatedStates[p.id]?.status === "RESERVE"
-    );
-
-    if (reservesOfThisType.length > 0) {
+    if (targetTask) {
+      const reservesOfThisType = allPinsOfType.filter(
+        (p) => updatedStates[p.id]?.status === "RESERVE"
+      );
       const combinedNotes = reservesOfThisType
         .map((p) => {
           const itemNote = updatedStates[p.id]?.note;
@@ -295,40 +362,22 @@ export default function App() {
         })
         .join(" | ");
 
-      setNotes((prev) => ({ ...prev, [targetTask.id]: combinedNotes }));
+      const allCheckedDone =
+        allPinsOfType.length > 0 &&
+        allPinsOfType.filter((p) => updatedStates[p.id]?.status === "FAIT").length === allPinsOfType.length;
 
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === targetTask.id
-            ? {
-                ...t,
-                status: "RESERVE",
-                observation: combinedNotes,
-                updatedBy: user,
-                completedAt: now,
-              }
-            : t
-        )
-      );
+      const newStatus = reservesOfThisType.length > 0 ? "RESERVE" : allCheckedDone ? "FAIT" : "A_FAIRE";
 
       await updateTaskStatus(
         targetTask.id,
         selectedYear,
         selectedMonth,
-        "RESERVE",
+        newStatus,
         combinedNotes,
         user,
         now,
         photos[targetTask.id] || null
       );
-    } else {
-      const checkedDoneCount = allPinsOfType.filter(
-        (p) => updatedStates[p.id]?.status === "FAIT"
-      ).length;
-
-      if (allPinsOfType.length > 0 && checkedDoneCount === allPinsOfType.length) {
-        await handleStatusChange(targetTask.id, "FAIT");
-      }
     }
   };
 
