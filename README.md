@@ -13,6 +13,7 @@ L'application permet de consulter les opérations prévues pour un mois donné, 
 - [Configuration](#configuration)
 - [Démarrage](#démarrage)
 - [Utilisation](#utilisation)
+- [Plan interactif](#plan-interactif)
 - [API](#api)
 - [Modèle de données](#modèle-de-données)
 - [Règles de planification](#règles-de-planification)
@@ -34,7 +35,12 @@ L'application permet de consulter les opérations prévues pour un mois donné, 
 - Ajout d'une photo compressée pour documenter une tâche ou une réserve.
 - Identification de l'utilisateur ayant effectué la dernière modification.
 - Historique mensuel d'une tâche.
-- Espace administrateur protégé par PIN : réserves, tâches, synthèse annuelle et sauvegarde.
+- Plan interactif des équipements avec états par pastille : `A_FAIRE`, `FAIT` et `RESERVE`.
+- Jauge de progression par équipement contrôlé, avec comptage des réserves.
+- Synchronisation du plan avec la tâche parente : une réserve remonte sur la tâche et les notes sont regroupées.
+- États des pastilles conservés par mois et par année dans la base backend, avec un cache local hors ligne.
+- Espace administrateur protégé par PIN : réserves, tâches, synthèse annuelle, sécurité et sauvegarde.
+- Résolution d'une réserve avec conservation de l'historique et ajout d'une note de résolution.
 - Exports mensuels Excel/PDF et rapport annuel PDF.
 - Fonctionnement hors ligne grâce à IndexedDB et Dexie.
 - Synchronisation automatique de la file locale dès que le navigateur revient en ligne.
@@ -59,8 +65,10 @@ maintenance-piscine/
 │   ├── public/              # Ressources statiques et icônes PWA
 │   └── src/
 │       ├── App.jsx          # Interface et interactions principales
+│       ├── AdminDashboard.jsx # Espace administrateur
 │       ├── db.js            # Base IndexedDB locale
-│       └── syncService.js   # Lecture API, file hors ligne et synchronisation
+│       ├── syncService.js   # Lecture API, file hors ligne et synchronisation
+│       └── components/      # Plan interactif, tâches, historique et contrôles UI
 └── README.md
 ```
 
@@ -167,6 +175,8 @@ Pour un environnement réel, définir ces valeurs dans l'environnement d'exécut
 
 La clé saisie dans le panneau **Profil & Clé d'API** est conservée dans `localStorage` sous la clé `pool_api_key`. Le nom de l'utilisateur est conservé sous `pool_user`.
 
+Les appels généraux de `syncService.js` utilisent `VITE_API_URL`. Les appels du plan interactif, de l'espace administrateur et des photos utilisent actuellement l'URL de production définie dans le code frontend ; une évolution recommandée consiste à les faire utiliser la même variable d'environnement.
+
 ## Démarrage
 
 ### Lancer l'API Symfony
@@ -208,6 +218,11 @@ curl -H "X-API-KEY: remplacer-par-la-cle" "http://127.0.0.1:8000/api/tasks?year=
 
 Une clé absente ou incorrecte retourne une réponse HTTP `401`.
 
+### Accéder à la version publiée
+
+La version frontend publiée par GitHub Pages est disponible à l'adresse suivante :
+`https://gregmelo.github.io/maintenance-piscine`
+
 ## Utilisation
 
 1. Ouvrir l'URL du frontend.
@@ -218,6 +233,19 @@ Une clé absente ou incorrecte retourne une réponse HTTP `401`.
 6. Vérifier l'indicateur de connexion avant de quitter la page.
 
 Une tâche non due reste visible dans sa catégorie, mais les indicateurs et le tri mettent les tâches dues en priorité.
+
+## Plan interactif
+
+Le plan est accessible depuis le bouton de carte associé aux tâches suivantes : extincteurs, BAES, désenfumage et coupures.
+
+- Chaque pastille peut être marquée `FAIT`, `RESERVE` ou remise à `A_FAIRE`.
+- Une réserve peut recevoir une note d'anomalie.
+- La jauge indique le nombre de pastilles contrôlées sur le total du type d'équipement.
+- Une réserve colore la jauge en orange et remonte automatiquement sur la tâche correspondante.
+- Lorsque toutes les pastilles d'un type sont contrôlées sans réserve, la tâche correspondante passe automatiquement à `FAIT`.
+- Les états sont sauvegardés pour le couple année/mois sélectionné via l'API et conservés dans `localStorage` pour la consultation hors ligne.
+
+L'inventaire des pastilles est chargé depuis `GET /api/plan-pins`. Les coordonnées sont exprimées en pourcentage de l'image du plan et les données initiales sont créées automatiquement par le backend si la table est vide.
 
 ## API
 
@@ -300,7 +328,15 @@ Réponse `200` :
 
 Le backend crée ou met à jour un journal unique pour le couple tâche/année/mois. Les identifiants de tâches inexistants sont ignorés. Une image `data:image/...;base64,...` est enregistrée dans `backend/public/uploads/tasks/`.
 
-Le service frontend envoie actuellement la file sous forme de tableau JSON alors que le contrôleur backend lit le champ `updates`. Cette différence doit être harmonisée avant de dépendre de la synchronisation hors ligne en production.
+Le contrôleur backend attend un objet contenant `updates`. Le service frontend envoie actuellement la file sous forme de tableau JSON. Cette différence doit être harmonisée avant de dépendre de la synchronisation hors ligne des tâches en production.
+
+### Historique d'une tâche
+
+```http
+GET /api/tasks/{id}/history
+```
+
+Retourne les journaux mensuels de la tâche, avec son statut, ses observations, l'utilisateur, la date de validation et la photo éventuelle.
 
 ### Routes administrateur
 
@@ -319,6 +355,17 @@ Les routes suivantes nécessitent la même clé API. La vérification du PIN est
 | `DELETE` | `/api/admin/tasks/{id}` | Supprimer une tâche et son historique |
 | `POST` | `/api/admin/cleanup-photos` | Supprimer les photos orphelines |
 | `GET` | `/api/admin/backup-db` | Télécharger une sauvegarde de la base |
+
+### Plan et états des pastilles
+
+| Méthode | Route | Rôle |
+| --- | --- | --- |
+| `GET` | `/api/plan-pins` | Charger l'inventaire des pastilles du plan |
+| `POST` | `/api/plan-pins` | Remplacer l'inventaire des pastilles |
+| `GET` | `/api/plan-pin-states/{year}/{month}` | Charger les états mensuels des pastilles |
+| `POST` | `/api/plan-pin-states/{year}/{month}` | Enregistrer les états mensuels des pastilles |
+
+Les routes du plan nécessitent également `X-API-KEY`. Les états sont stockés avec une clé unique composée de `pin_id`, `year` et `month`.
 
 L'authentification par PIN est conservée dans `sessionStorage` côté navigateur. Elle complète la clé API mais ne remplace pas une authentification serveur robuste pour un environnement exposé.
 
@@ -486,6 +533,9 @@ php bin/console doctrine:fixtures:load --no-interaction
 | Chemin | Responsabilité |
 | --- | --- |
 | `frontend/src/App.jsx` | État de l'interface, navigation mensuelle, catégories et actions utilisateur |
+| `frontend/src/AdminDashboard.jsx` | Authentification PIN, réserves, synthèse annuelle, gestion des tâches et sauvegarde |
+| `frontend/src/components/InteractivePlan.jsx` | Affichage du plan et modification des états des pastilles |
+| `frontend/public/plans/` | Images et ressources du plan interactif |
 | `frontend/src/syncService.js` | Appels API, lecture du cache, ajout et envoi de la file de synchronisation |
 | `frontend/src/db.js` | Schéma IndexedDB Dexie |
 | `frontend/vite.config.js` | Build Vite et configuration PWA |
