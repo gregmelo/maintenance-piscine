@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 /**
  * Extrait une chaîne de caractères propre, même si la valeur est un objet
@@ -14,15 +14,38 @@ function toText(val) {
 }
 
 /**
- * Exporte un tableau de tâches au format Excel
+ * Exporte un tableau de tâches au format Excel (.xlsx) natif avec ExcelJS
  */
-export function exportTasksToExcel(tasks, monthName, year) {
+export async function exportTasksToExcel(tasks, monthName, year) {
   if (!tasks || tasks.length === 0) {
     alert("Aucune tâche à exporter.");
     return;
   }
 
-  const data = tasks.map((t) => {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet("Maintenance");
+
+  // Définition des colonnes et largeurs
+  worksheet.columns = [
+    { header: "Catégorie", key: "category", width: 25 },
+    { header: "Point de contrôle", key: "title", width: 45 },
+    { header: "Périodicité", key: "frequency", width: 15 },
+    { header: "Statut", key: "status", width: 14 },
+    { header: "Opérateur", key: "operator", width: 18 },
+    { header: "Date de réalisation", key: "date", width: 22 },
+    { header: "Observations / Réserve", key: "observation", width: 40 },
+  ];
+
+  // Style de l'en-tête (Gras + fond bleu clair)
+  worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+  worksheet.getRow(1).fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FF0284C7" }, // Bleu piscine
+  };
+
+  // Remplissage des données
+  tasks.forEach((t) => {
     let dateStr = "";
     if (t.completedAt) {
       try {
@@ -33,16 +56,38 @@ export function exportTasksToExcel(tasks, monthName, year) {
       }
     }
 
-    return {
-      "Catégorie": toText(t.category) || "—",
-      "Point de contrôle": toText(t.title),
-      "Périodicité": toText(t.frequency),
-      "Statut": t.status === "FAIT" ? "FAIT" : t.status === "RESERVE" ? "RÉSERVE" : "À FAIRE",
-      "Opérateur": toText(t.updatedBy),
-      "Date de réalisation": dateStr,
-      "Observations / Réserve": toText(t.observation),
-    };
+    const statutLabel =
+      t.status === "FAIT"
+        ? "FAIT"
+        : t.status === "RESERVE"
+        ? "RÉSERVE"
+        : "À FAIRE";
+
+    worksheet.addRow({
+      category: toText(t.category) || "—",
+      title: toText(t.title),
+      frequency: toText(t.frequency),
+      status: statutLabel,
+      operator: toText(t.updatedBy),
+      date: dateStr,
+      observation: toText(t.observation),
+    });
   });
+
+  // Génération du fichier binaire et déclenchement du téléchargement
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `registre_maintenance_${monthName.toLowerCase()}_${year}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
 
   const worksheet = XLSX.utils.json_to_sheet(data);
   const workbook = XLSX.utils.book_new();
