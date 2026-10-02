@@ -658,97 +658,105 @@ class ApiController extends AbstractController
         return $this->json(['success' => true, 'count' => count($pins)]);
     }
 
-    #[Route('/plan-pin-states/{year}/{month}', name: 'api_plan_pin_states_get', methods: ['GET'])]
+    #[Route('/plan-pin-states/{year}/{month}', name: 'plan_pin_states_get', methods: ['GET'])]
     public function getPinStates(int $year, int $month, Request $request, EntityManagerInterface $em): JsonResponse
     {
-        $apiKey = $request->headers->get('X-API-KEY');
-        if ($apiKey !== $this->getParameter('app.api_key')) {
-            return new JsonResponse(['error' => 'Accès non autorisé'], 401);
+        if (!$this->isAuthorized($request)) {
+            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
         }
 
-        $conn = $em->getConnection();
-        // Création automatique de la table si nécessaire
-        $conn->executeStatement("
-        CREATE TABLE IF NOT EXISTS plan_pin_states (
-            pin_id VARCHAR(64) NOT NULL,
-            year INT NOT NULL,
-            month INT NOT NULL,
-            status VARCHAR(20) NOT NULL,
-            note TEXT,
-            updated_by VARCHAR(100),
-            completed_at VARCHAR(40),
-            PRIMARY KEY (pin_id, year, month)
-        )
-    ");
+        try {
+            $conn = $em->getConnection();
+            $conn->executeStatement("
+                CREATE TABLE IF NOT EXISTS plan_pin_states (
+                    pin_id VARCHAR(64) NOT NULL,
+                    year INTEGER NOT NULL,
+                    month INTEGER NOT NULL,
+                    status VARCHAR(20) NOT NULL,
+                    note TEXT,
+                    updated_by VARCHAR(100),
+                    completed_at VARCHAR(40),
+                    PRIMARY KEY (pin_id, year, month)
+                )
+            ");
 
-        $rows = $conn->fetchAllAssociative(
-            "SELECT pin_id, status, note, updated_by as updatedBy, completed_at as completedAt 
-         FROM plan_pin_states 
-         WHERE year = ? AND month = ?",
-            [$year, $month]
-        );
+            $rows = $conn->fetchAllAssociative(
+                "SELECT pin_id, status, note, updated_by, completed_at 
+                 FROM plan_pin_states 
+                 WHERE year = :year AND month = :month",
+                [
+                    'year' => (int)$year,
+                    'month' => (int)$month,
+                ]
+            );
 
-        $states = [];
-        foreach ($rows as $row) {
-            $states[$row['pin_id']] = [
-                'status' => $row['status'],
-                'note' => $row['note'] ?? '',
-                'updatedBy' => $row['updatedBy'] ?? '',
-                'completedAt' => $row['completedAt'] ?? ''
-            ];
+            $states = [];
+            foreach ($rows as $row) {
+                $states[$row['pin_id']] = [
+                    'status' => $row['status'],
+                    'note' => $row['note'] ?? '',
+                    'updatedBy' => $row['updated_by'] ?? '',
+                    'completedAt' => $row['completed_at'] ?? ''
+                ];
+            }
+
+            return $this->json($states);
+        } catch (\Throwable $e) {
+            return $this->json(['error' => $e->getMessage()], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
-
-        return new JsonResponse($states);
     }
 
-    #[Route('/plan-pin-states/{year}/{month}', name: 'api_plan_pin_states_save', methods: ['POST'])]
+    #[Route('/plan-pin-states/{year}/{month}', name: 'plan_pin_states_save', methods: ['POST'])]
     public function savePinStates(int $year, int $month, Request $request, EntityManagerInterface $em): JsonResponse
     {
-        $apiKey = $request->headers->get('X-API-KEY');
-        if ($apiKey !== $this->getParameter('app.api_key')) {
-            return new JsonResponse(['error' => 'Accès non autorisé'], 401);
+        if (!$this->isAuthorized($request)) {
+            return $this->json(['error' => 'Accès non autorisé'], Response::HTTP_UNAUTHORIZED);
         }
 
         $data = json_decode($request->getContent(), true);
         if (!is_array($data)) {
-            return new JsonResponse(['error' => 'Données invalides'], 400);
+            return $this->json(['error' => 'Données invalides'], Response::HTTP_BAD_REQUEST);
         }
 
-        $conn = $em->getConnection();
-        $conn->executeStatement("
-        CREATE TABLE IF NOT EXISTS plan_pin_states (
-            pin_id VARCHAR(64) NOT NULL,
-            year INT NOT NULL,
-            month INT NOT NULL,
-            status VARCHAR(20) NOT NULL,
-            note TEXT,
-            updated_by VARCHAR(100),
-            completed_at VARCHAR(40),
-            PRIMARY KEY (pin_id, year, month)
-        )
-    ");
+        try {
+            $conn = $em->getConnection();
+            $conn->executeStatement("
+                CREATE TABLE IF NOT EXISTS plan_pin_states (
+                    pin_id VARCHAR(64) NOT NULL,
+                    year INTEGER NOT NULL,
+                    month INTEGER NOT NULL,
+                    status VARCHAR(20) NOT NULL,
+                    note TEXT,
+                    updated_by VARCHAR(100),
+                    completed_at VARCHAR(40),
+                    PRIMARY KEY (pin_id, year, month)
+                )
+            ");
 
-        foreach ($data as $pinId => $state) {
-            $conn->executeStatement(
-                "INSERT INTO plan_pin_states (pin_id, year, month, status, note, updated_by, completed_at)
-             VALUES (:pin_id, :year, :month, :status, :note, :updated_by, :completed_at)
-             ON CONFLICT(pin_id, year, month) DO UPDATE SET
-                status = excluded.status,
-                note = excluded.note,
-                updated_by = excluded.updated_by,
-                completed_at = excluded.completed_at",
-                [
-                    'pin_id' => $pinId,
-                    'year' => $year,
-                    'month' => $month,
-                    'status' => $state['status'] ?? 'A_FAIRE',
-                    'note' => $state['note'] ?? '',
-                    'updated_by' => $state['updatedBy'] ?? '',
-                    'completed_at' => $state['completedAt'] ?? null
-                ]
-            );
+            foreach ($data as $pinId => $state) {
+                $conn->executeStatement(
+                    "INSERT INTO plan_pin_states (pin_id, year, month, status, note, updated_by, completed_at)
+                     VALUES (:pin_id, :year, :month, :status, :note, :updated_by, :completed_at)
+                     ON CONFLICT(pin_id, year, month) DO UPDATE SET
+                        status = excluded.status,
+                        note = excluded.note,
+                        updated_by = excluded.updated_by,
+                        completed_at = excluded.completed_at",
+                    [
+                        'pin_id' => (string)$pinId,
+                        'year' => (int)$year,
+                        'month' => (int)$month,
+                        'status' => (string)($state['status'] ?? 'A_FAIRE'),
+                        'note' => (string)($state['note'] ?? ''),
+                        'updated_by' => (string)($state['updatedBy'] ?? ''),
+                        'completed_at' => !empty($state['completedAt']) ? (string)$state['completedAt'] : null
+                    ]
+                );
+            }
+
+            return $this->json(['success' => true]);
+        } catch (\Throwable $e) {
+            return $this->json(['error' => $e->getMessage()], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
-
-        return new JsonResponse(['success' => true]);
     }
 }
