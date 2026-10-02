@@ -41,7 +41,7 @@ export async function exportTasksToExcel(tasks, monthName, year) {
   worksheet.getRow(1).fill = {
     type: "pattern",
     pattern: "solid",
-    fgColor: { argb: "FF0284C7" }, // Bleu piscine
+    fgColor: { argb: "FF0284C7" },
   };
 
   // Remplissage des données
@@ -74,7 +74,6 @@ export async function exportTasksToExcel(tasks, monthName, year) {
     });
   });
 
-  // Génération du fichier binaire et déclenchement du téléchargement
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -87,24 +86,6 @@ export async function exportTasksToExcel(tasks, monthName, year) {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
-}
-
-  const worksheet = XLSX.utils.json_to_sheet(data);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Maintenance");
-
-  // Ajustement automatique des largeurs de colonnes
-  worksheet["!cols"] = [
-    { wch: 24 },
-    { wch: 45 },
-    { wch: 14 },
-    { wch: 12 },
-    { wch: 16 },
-    { wch: 20 },
-    { wch: 35 },
-  ];
-
-  XLSX.writeFile(workbook, `registre_maintenance_${monthName.toLowerCase()}_${year}.xlsx`);
 }
 
 /**
@@ -122,7 +103,6 @@ export function exportTasksToPDF(tasks, monthName, year) {
     format: "a4",
   });
 
-  // En-tête
   doc.setFontSize(16);
   doc.setTextColor(15, 23, 42);
   doc.text("Piscine Municipale d'Ambérieu", 14, 16);
@@ -242,7 +222,7 @@ export function exportAnnualReportToPDF(annualData, year) {
 
   const MONTH_NAMES = [
     "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
-    "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
+    "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre",
   ];
 
   doc.setFontSize(18);
@@ -256,7 +236,6 @@ export function exportAnnualReportToPDF(annualData, year) {
 
   let currentY = 42;
 
-  // Chaque mois est ajoute au fil du document afin de conserver l'ordre annuel.
   annualData.months.forEach((mObj, idx) => {
     const monthName = MONTH_NAMES[mObj.month - 1];
     const tasks = mObj.tasks || [];
@@ -295,7 +274,9 @@ export function exportAnnualReportToPDF(annualData, year) {
       const details = [
         userStr ? `Par : ${userStr} (${dateStr})` : "",
         obsStr ? `Note : ${obsStr}` : "",
-      ].filter(Boolean).join("\n");
+      ]
+        .filter(Boolean)
+        .join("\n");
 
       return [catStr, titleStr, freqStr, statut, details || "—"];
     });
