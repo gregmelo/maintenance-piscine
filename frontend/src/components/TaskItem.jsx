@@ -27,7 +27,9 @@ export default function TaskItem({
 }) {
   const isDue = task.isDue;
   const isWarning = task.status === "RESERVE";
-  const hasNote = Boolean(task.observation && task.observation.trim().length > 0);
+  const hasNote = Boolean(
+    task.observation && task.observation.trim().length > 0,
+  );
   const photo = photos[task.id] || task.photoUrl;
   const photoUrl = photos[task.id] || `${PHOTO_BASE_URL}${task.photoUrl}`;
 
@@ -36,23 +38,42 @@ export default function TaskItem({
   // Détection du calque associé
   let targetLayer = null;
   if (titleLower.includes("extincteur")) targetLayer = "extincteur";
-  else if (titleLower.includes("baes") || titleLower.includes("secours")) targetLayer = "baes";
-  else if (titleLower.includes("désenfumage") || titleLower.includes("desenfumage")) targetLayer = "desenfumage";
-  else if (titleLower.includes("coupure") || titleLower.includes("gaz") || titleLower.includes("tgbt")) targetLayer = "coupure";
+  else if (titleLower.includes("baes") || titleLower.includes("secours"))
+    targetLayer = "baes";
+  else if (
+    titleLower.includes("désenfumage") ||
+    titleLower.includes("desenfumage")
+  )
+    targetLayer = "desenfumage";
+  else if (
+    titleLower.includes("coupure") ||
+    titleLower.includes("gaz") ||
+    titleLower.includes("tgbt")
+  )
+    targetLayer = "coupure";
 
-  // Calcul du pourcentage de réalisation sur le plan
+  // Calcul de la progression et des anomalies sur le plan
   let planStats = null;
   if (targetLayer && planPins.length > 0) {
     const relatedPins = planPins.filter((p) => p.type === targetLayer);
     if (relatedPins.length > 0) {
-      const verifiedPins = relatedPins.filter((p) => {
+      let verifiedCount = 0;
+      let reserveCount = 0;
+
+      relatedPins.forEach((p) => {
         const st = pinStates[p.id]?.status;
-        return st === "FAIT" || st === "RESERVE";
-      }).length;
-      const percent = Math.round((verifiedPins / relatedPins.length) * 100);
+        if (st === "FAIT") verifiedCount++;
+        else if (st === "RESERVE") {
+          verifiedCount++;
+          reserveCount++;
+        }
+      });
+
+      const percent = Math.round((verifiedCount / relatedPins.length) * 100);
       planStats = {
         total: relatedPins.length,
-        verified: verifiedPins,
+        verified: verifiedCount,
+        reserves: reserveCount,
         percent,
       };
     }
@@ -72,7 +93,13 @@ export default function TaskItem({
           <div className="task-heading">
             <span className="task-title">{task.title}</span>
 
-            <div style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
               {targetLayer && onOpenPlan && (
                 <button
                   type="button"
@@ -105,10 +132,19 @@ export default function TaskItem({
                   justifyContent: "space-between",
                   fontSize: "0.74rem",
                   fontWeight: "600",
-                  color: planStats.percent === 100 ? "#16a34a" : "#0284c7",
+                  color:
+                    planStats.reserves > 0
+                      ? "#d97706"
+                      : planStats.percent === 100
+                        ? "#16a34a"
+                        : "#0284c7",
                 }}
               >
-                <span>Contrôlés sur plan : {planStats.verified} / {planStats.total}</span>
+                <span>
+                  {planStats.reserves > 0
+                    ? `Contrôlés : ${planStats.verified} / ${planStats.total} (${planStats.reserves} réserve${planStats.reserves > 1 ? "s" : ""})`
+                    : `Contrôlés sur plan : ${planStats.verified} / ${planStats.total}`}
+                </span>
                 <span>{planStats.percent}%</span>
               </div>
               <div
@@ -125,8 +161,13 @@ export default function TaskItem({
                   style={{
                     width: `${planStats.percent}%`,
                     height: "100%",
-                    background: planStats.percent === 100 ? "#22c55e" : "#0284c7",
-                    transition: "width 0.3s ease",
+                    background:
+                      planStats.reserves > 0
+                        ? "#f59e0b"
+                        : planStats.percent === 100
+                          ? "#22c55e"
+                          : "#0284c7",
+                    transition: "width 0.3s ease, background-color 0.3s ease",
                   }}
                 />
               </div>
@@ -140,7 +181,10 @@ export default function TaskItem({
               <span className="validated-by">
                 • Validé par <strong>{task.updatedBy}</strong>
                 {task.completedAt && (
-                  <span className="completed-at"> {formatCompletedAt(task.completedAt)}</span>
+                  <span className="completed-at">
+                    {" "}
+                    {formatCompletedAt(task.completedAt)}
+                  </span>
                 )}
               </span>
             )}
@@ -179,7 +223,8 @@ export default function TaskItem({
       {isDue && isWarning && (
         <div className="reserve-editor">
           <label className="reserve-label">
-            <MessageSquare size={14} /> Préciser l'anomalie / réserve constatée :
+            <MessageSquare size={14} /> Préciser l'anomalie / réserve constatée
+            :
           </label>
           <textarea
             value={notes[task.id] ?? task.observation ?? ""}
@@ -195,7 +240,9 @@ export default function TaskItem({
                 type="file"
                 accept="image/*"
                 capture="environment"
-                onChange={(event) => onPhotoChange(task.id, event.target.files[0])}
+                onChange={(event) =>
+                  onPhotoChange(task.id, event.target.files[0])
+                }
               />
             </label>
             {photo && (
@@ -209,7 +256,10 @@ export default function TaskItem({
             )}
           </div>
           <div className="save-note-row no-print">
-            <button onClick={() => onSaveNote(task)} className="save-note-button">
+            <button
+              onClick={() => onSaveNote(task)}
+              className="save-note-button"
+            >
               Enregistrer la note
             </button>
           </div>
@@ -225,7 +275,9 @@ export default function TaskItem({
             <img
               src={`${PHOTO_BASE_URL}${task.photoUrl}`}
               alt="Photo réserve"
-              onClick={() => onPreviewImage(`${PHOTO_BASE_URL}${task.photoUrl}`)}
+              onClick={() =>
+                onPreviewImage(`${PHOTO_BASE_URL}${task.photoUrl}`)
+              }
               className="task-photo existing"
               title="Cliquer pour agrandir"
             />
